@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import {
@@ -93,10 +94,20 @@ export default function Dashboard() {
   return (
     <div className="px-4 pt-6 pb-4 space-y-4">
       {/* 헤더 */}
-      <div>
-        <p className="text-xs text-gray-500">{today}</p>
-        <h1 className="text-2xl font-bold text-gray-900 mt-0.5">안녕하세요 👋</h1>
-        <p className="text-sm text-gray-500 mt-0.5">생산품질팀 업무 현황</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-gray-500">{today}</p>
+          <h1 className="text-2xl font-bold text-gray-900 mt-0.5">안녕하세요 👋</h1>
+          <p className="text-sm text-gray-500 mt-0.5">생산품질팀 업무 현황</p>
+        </div>
+        <Image
+          src="/pig.jpg"
+          alt="돼지"
+          width={64}
+          height={64}
+          className="rounded-full object-cover border-2 border-pink-200"
+          priority
+        />
       </div>
 
       {/* 진행률 카드 */}
