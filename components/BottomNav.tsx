@@ -24,6 +24,7 @@ const userNav = [
   { href: "/stocks", icon: TrendingUp, label: "주식" },
   { href: "/gathering", icon: Users, label: "집합" },
   { href: "/board", icon: MessageSquare, label: "게시판" },
+  { href: "/more", icon: MoreHorizontal, label: "더보기" },
 ];
 
 export default function BottomNav() {

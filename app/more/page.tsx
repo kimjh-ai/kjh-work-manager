@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useUser, useClerk } from "@clerk/nextjs";
 import {
   AlertTriangle, Package, DollarSign, Calendar,
-  Download, ChevronRight, CheckSquare, FileText, LogOut,
+  Download, ChevronRight, CheckSquare, FileText, LogOut, User,
 } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 
@@ -119,18 +120,37 @@ export default function MorePage() {
 
   return (
     <div className="px-4 pt-6 pb-4">
+      <h1 className="text-xl font-bold text-gray-900 mb-4">더보기</h1>
       {/* 프로필 */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">더보기</h1>
-          <p className="text-xs text-gray-500 mt-0.5">
-            {myName} · {admin ? "👑 관리자" : "일반 멤버"}
-          </p>
+      <div className="card mb-4">
+        <Link href="/profile" className="flex items-center gap-3 mb-3">
+          <div className="relative w-14 h-14 flex-shrink-0">
+            {user?.imageUrl ? (
+              <Image src={user.imageUrl} alt="프로필" width={56} height={56}
+                className="rounded-full object-cover border-2 border-gray-100" />
+            ) : (
+              <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center border-2 border-gray-100">
+                <User size={24} className="text-gray-400" />
+              </div>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-base font-bold text-gray-900 truncate">{myName}</p>
+            <p className="text-xs text-gray-400 truncate">{email}</p>
+            <p className="text-xs mt-0.5">{admin ? "👑 관리자" : "일반 멤버"}</p>
+          </div>
+          <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
+        </Link>
+        <div className="flex gap-2 pt-2 border-t border-gray-100">
+          <Link href="/profile"
+            className="flex-1 text-center text-xs text-blue-600 font-medium py-1.5 bg-blue-50 rounded-xl">
+            프로필 편집
+          </Link>
+          <button type="button" onClick={() => signOut({ redirectUrl: "/sign-in" })}
+            className="flex-1 flex items-center justify-center gap-1 text-xs text-gray-500 border border-gray-200 rounded-xl py-1.5">
+            <LogOut size={12} /> 로그아웃
+          </button>
         </div>
-        <button type="button" onClick={() => signOut({ redirectUrl: "/sign-in" })}
-          className="flex items-center gap-1 text-xs text-gray-500 border border-gray-200 rounded-xl px-3 py-1.5">
-          <LogOut size={13} /> 로그아웃
-        </button>
       </div>
 
       {/* 관리자 전용 메뉴 */}
