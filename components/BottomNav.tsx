@@ -21,10 +21,10 @@ const adminNav = [
 ];
 
 const userNav = [
-  { href: "/stocks", icon: TrendingUp, label: "주식" },
   { href: "/gathering", icon: Users, label: "집합" },
   { href: "/board", icon: MessageSquare, label: "게시판" },
-  { href: "/more", icon: MoreHorizontal, label: "더보기" },
+  { href: "/more", icon: MoreHorizontal, label: "프로필만들기" },
+  { href: "/stocks", icon: TrendingUp, label: "주식" },
 ];
 
 export default function BottomNav() {

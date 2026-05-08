@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { koKR } from "@clerk/localizations";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import InitSampleData from "@/components/InitSampleData";
@@ -30,7 +31,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
+    <ClerkProvider localization={koKR}>
       <html lang="ko" className="h-full">
         <body className="h-full antialiased app-bg">
           <InitSampleData />
