@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import redis from "@/lib/redis";
+import webpush from "web-push";
+
+webpush.setVapidDetails(
+  process.env.VAPID_EMAIL!,
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+  process.env.VAPID_PRIVATE_KEY!
+);
 
 const KEY = "gather:current";
 
@@ -39,6 +46,20 @@ export async function POST(req: NextRequest) {
     checkins: [] as string[],
   };
   await redis.set(KEY, JSON.stringify(call));
+
+  // 푸시 알림 전송
+  try {
+    const subRaw = await redis.get("push:subscriptions");
+    const subs: webpush.PushSubscription[] = subRaw ? JSON.parse(subRaw) : [];
+    const locationEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
+    const emoji = locationEmoji[body.location] ?? "📍";
+    const payload = JSON.stringify({
+      title: `🚨 집합! ${emoji} ${body.location}`,
+      body: body.message ? `"${body.message}" - ${body.calledBy}` : `${body.calledBy}님이 집합을 발령했습니다`,
+    });
+    await Promise.allSettled(subs.map((sub) => webpush.sendNotification(sub, payload)));
+  } catch { /* 푸시 실패해도 집합은 저장됨 */ }
+
   return NextResponse.json({ ok: true });
 }
 
