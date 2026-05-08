@@ -13,7 +13,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { title, content, author } = await req.json();
+  const { title, content, author, authorImage } = await req.json();
   const raw = await redis.get(KEY);
   const posts = raw ? JSON.parse(raw) : [];
   posts.unshift({
@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     title,
     content: content ?? "",
     author,
+    authorImage: authorImage ?? null,
     createdAt: new Date().toISOString(),
   });
   await redis.set(KEY, JSON.stringify(posts.slice(0, 200)));

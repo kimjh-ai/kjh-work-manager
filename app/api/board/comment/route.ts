@@ -4,7 +4,7 @@ import redis from "@/lib/redis";
 const KEY = "board:posts";
 
 export async function POST(req: NextRequest) {
-  const { postId, content, author } = await req.json();
+  const { postId, content, author, authorImage } = await req.json();
   if (!postId || !content?.trim()) return NextResponse.json({ ok: false });
 
   const raw = await redis.get(KEY);
@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
     id: Date.now().toString(),
     content: content.trim(),
     author,
+    authorImage: authorImage ?? null,
     createdAt: new Date().toISOString(),
   });
 

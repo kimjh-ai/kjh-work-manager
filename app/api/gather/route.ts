@@ -28,8 +28,11 @@ export async function POST(req: NextRequest) {
       const raw = await redis.get(KEY);
       if (!raw) return NextResponse.json({ ok: false });
       const call = JSON.parse(raw);
-      if (!call.checkins.includes(body.name)) {
-        call.checkins.push(body.name);
+      const already = call.checkins.some(
+        (c: string | { name: string }) => (typeof c === "string" ? c : c.name) === body.name
+      );
+      if (!already) {
+        call.checkins.push({ name: body.name, imageUrl: body.imageUrl ?? null });
         await redis.set(KEY, JSON.stringify(call));
       }
     } catch { /* no-op */ }

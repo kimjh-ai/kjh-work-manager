@@ -2,10 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { MapPin, CheckCircle2, Circle, Bell, X } from "lucide-react";
+import { CheckCircle2, Bell, X } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
+import Avatar from "@/components/Avatar";
 
 type Location = "3층" | "옥상" | "편의점";
+
+interface Checkin {
+  name: string;
+  imageUrl?: string | null;
+}
 
 interface GatherCall {
   id: string;
@@ -13,7 +19,7 @@ interface GatherCall {
   message: string;
   calledBy: string;
   calledAt: string;
-  checkins: string[]; // 체크인한 유저 이름 목록
+  checkins: (string | Checkin)[];
 }
 
 const LOCATIONS: { value: Location; emoji: string }[] = [
@@ -21,6 +27,13 @@ const LOCATIONS: { value: Location; emoji: string }[] = [
   { value: "옥상", emoji: "🌤️" },
   { value: "편의점", emoji: "🏪" },
 ];
+
+function checkinName(c: string | Checkin): string {
+  return typeof c === "string" ? c : c.name;
+}
+function checkinImage(c: string | Checkin): string | null {
+  return typeof c === "string" ? null : (c.imageUrl ?? null);
+}
 
 export default function GatheringPage() {
   const { user, isLoaded } = useUser();
@@ -34,6 +47,7 @@ export default function GatheringPage() {
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const admin = isAdmin(email);
   const myName = user?.firstName ?? user?.username ?? email.split("@")[0];
+  const myImage = user?.imageUrl ?? null;
 
   const load = async () => {
     try {
@@ -46,7 +60,7 @@ export default function GatheringPage() {
 
   useEffect(() => {
     if (isLoaded) load();
-    const interval = setInterval(load, 5000); // 5초마다 갱신
+    const interval = setInterval(load, 5000);
     return () => clearInterval(interval);
   }, [isLoaded]);
 
@@ -78,13 +92,13 @@ export default function GatheringPage() {
       await fetch("/api/gather", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "checkin", name: myName }),
+        body: JSON.stringify({ action: "checkin", name: myName, imageUrl: myImage }),
       });
       await load();
     } finally { setSaving(false); }
   };
 
-  const myCheckedIn = call?.checkins.includes(myName) ?? false;
+  const myCheckedIn = call?.checkins.some((c) => checkinName(c) === myName) ?? false;
 
   if (!isLoaded || loading) {
     return (
@@ -112,7 +126,6 @@ export default function GatheringPage() {
         )}
       </div>
 
-      {/* 발령 폼 */}
       {showForm && (
         <div className="card mb-4 space-y-3">
           <h2 className="text-sm font-semibold text-gray-700">📍 집합 장소 선택</h2>
@@ -146,16 +159,13 @@ export default function GatheringPage() {
         </div>
       )}
 
-      {/* 현재 집합 없음 */}
       {!call && !showForm && (
         <div className="card text-center py-12">
           <div className="text-5xl mb-3">😴</div>
           <p className="text-gray-500 text-sm">현재 집합 없음</p>
-          {admin && <p className="text-xs text-gray-400 mt-1">위 버튼으로 집합 발령하세요</p>}
         </div>
       )}
 
-      {/* 집합 발령 중 */}
       {call && (
         <>
           <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-5 mb-4 text-center">
@@ -171,7 +181,6 @@ export default function GatheringPage() {
             <p className="text-xs text-gray-400 mt-2">by {call.calledBy}</p>
           </div>
 
-          {/* 내 체크인 버튼 */}
           {!admin && (
             <button type="button" onClick={checkin} disabled={myCheckedIn || saving}
               className={`w-full py-4 rounded-2xl text-base font-semibold mb-4 transition-all ${
@@ -183,7 +192,6 @@ export default function GatheringPage() {
             </button>
           )}
 
-          {/* 체크인 현황 */}
           <div className="card">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">
               참석 현황 <span className="text-blue-600">{call.checkins.length}명</span>
@@ -192,10 +200,11 @@ export default function GatheringPage() {
               <p className="text-xs text-gray-400 text-center py-4">아직 아무도 없어요...</p>
             ) : (
               <div className="space-y-2">
-                {call.checkins.map((name) => (
-                  <div key={name} className="flex items-center gap-2">
-                    <CheckCircle2 size={16} className="text-green-500" />
-                    <span className="text-sm text-gray-800">{name}</span>
+                {call.checkins.map((c, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Avatar imageUrl={checkinImage(c)} name={checkinName(c)} size={30} />
+                    <span className="text-sm text-gray-800 flex-1">{checkinName(c)}</span>
+                    <CheckCircle2 size={16} className="text-green-500 flex-shrink-0" />
                   </div>
                 ))}
               </div>

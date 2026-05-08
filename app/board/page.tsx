@@ -5,11 +5,13 @@ import { useUser } from "@clerk/nextjs";
 import { format } from "date-fns";
 import { Plus, Trash2, X, MessageCircle, Send } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
+import Avatar from "@/components/Avatar";
 
 interface Comment {
   id: string;
   content: string;
   author: string;
+  authorImage?: string | null;
   createdAt: string;
 }
 
@@ -18,6 +20,7 @@ interface Post {
   title: string;
   content: string;
   author: string;
+  authorImage?: string | null;
   createdAt: string;
   comments?: Comment[];
 }
@@ -36,6 +39,7 @@ export default function BoardPage() {
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const admin = isAdmin(email);
   const myName = user?.firstName ?? user?.username ?? email.split("@")[0];
+  const myImage = user?.imageUrl ?? null;
 
   const load = async () => {
     try {
@@ -55,7 +59,7 @@ export default function BoardPage() {
       await fetch("/api/board", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim(), content: content.trim(), author: myName }),
+        body: JSON.stringify({ title: title.trim(), content: content.trim(), author: myName, authorImage: myImage }),
       });
       setTitle(""); setContent(""); setShowForm(false);
       await load();
@@ -82,7 +86,7 @@ export default function BoardPage() {
     await fetch("/api/board/comment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ postId, content: text, author: myName }),
+      body: JSON.stringify({ postId, content: text, author: myName, authorImage: myImage }),
     });
     setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
     await load();
@@ -114,7 +118,10 @@ export default function BoardPage() {
       {showForm && (
         <div className="card mb-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">새 글</h2>
+            <div className="flex items-center gap-2">
+              <Avatar imageUrl={myImage} name={myName} size={28} />
+              <h2 className="text-sm font-semibold text-gray-700">새 글</h2>
+            </div>
             <button type="button" onClick={() => setShowForm(false)} aria-label="닫기" className="text-gray-400">
               <X size={16} />
             </button>
@@ -149,16 +156,19 @@ export default function BoardPage() {
             const commentCount = post.comments?.length ?? 0;
             return (
               <div key={post.id} className="card">
-                {/* 게시글 본문 */}
                 <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900">{post.title}</p>
-                    {post.content && (
-                      <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{post.content}</p>
-                    )}
-                    <p className="text-xs text-gray-400 mt-2">
-                      {post.author} · {format(new Date(post.createdAt), "MM/dd HH:mm")}
-                    </p>
+                  <div className="flex items-start gap-2 flex-1 min-w-0">
+                    <Avatar imageUrl={post.authorImage} name={post.author} size={34} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-semibold text-gray-700">{post.author}</span>
+                        <span className="text-xs text-gray-400">· {format(new Date(post.createdAt), "MM/dd HH:mm")}</span>
+                      </div>
+                      <p className="text-sm font-semibold text-gray-900 mt-0.5">{post.title}</p>
+                      {post.content && (
+                        <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{post.content}</p>
+                      )}
+                    </div>
                   </div>
                   {(admin || post.author === myName) && (
                     <button type="button" onClick={() => removePost(post.id)} aria-label="글 삭제"
@@ -168,7 +178,6 @@ export default function BoardPage() {
                   )}
                 </div>
 
-                {/* 댓글 토글 버튼 */}
                 <button type="button" onClick={() => toggleComments(post.id)}
                   className="flex items-center gap-1 mt-3 text-xs text-gray-400 hover:text-blue-500 transition-colors">
                   <MessageCircle size={13} />
@@ -176,14 +185,14 @@ export default function BoardPage() {
                   <span className="text-gray-300">{commentsOpen ? "▲" : "▼"}</span>
                 </button>
 
-                {/* 댓글 영역 */}
                 {commentsOpen && (
                   <div className="mt-2 pt-2 border-t border-gray-100 space-y-2">
                     {(post.comments ?? []).map((c) => (
                       <div key={c.id} className="flex items-start gap-2">
+                        <Avatar imageUrl={c.authorImage} name={c.author} size={26} />
                         <div className="flex-1 bg-gray-50 rounded-xl px-3 py-2">
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-medium text-gray-700">{c.author}</span>
+                            <span className="text-xs font-semibold text-gray-700">{c.author}</span>
                             <span className="text-xs text-gray-400">{format(new Date(c.createdAt), "HH:mm")}</span>
                           </div>
                           <p className="text-xs text-gray-600 mt-0.5">{c.content}</p>
@@ -191,15 +200,15 @@ export default function BoardPage() {
                         {(admin || c.author === myName) && (
                           <button type="button" aria-label="댓글 삭제"
                             onClick={() => removeComment(post.id, c.id)}
-                            className="text-gray-300 hover:text-red-400 mt-1 flex-shrink-0">
+                            className="text-gray-300 hover:text-red-400 mt-2 flex-shrink-0">
                             <X size={13} />
                           </button>
                         )}
                       </div>
                     ))}
 
-                    {/* 댓글 입력 */}
-                    <div className="flex gap-2 mt-2">
+                    <div className="flex gap-2 mt-1 items-center">
+                      <Avatar imageUrl={myImage} name={myName} size={26} />
                       <input
                         type="text"
                         placeholder="댓글 입력..."
