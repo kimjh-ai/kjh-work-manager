@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { CheckCircle2, Bell, X } from "lucide-react";
+import { CheckCircle2, Bell, X, BellOff, BellRing } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import Avatar from "@/components/Avatar";
+import { registerPush } from "@/components/PushSubscriber";
 
 type Location = "3층" | "옥상" | "편의점";
 
@@ -43,6 +44,7 @@ export default function GatheringPage() {
   const [selectedLoc, setSelectedLoc] = useState<Location>("3층");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [notifStatus, setNotifStatus] = useState<"unknown" | "granted" | "denied" | "unsupported">("unknown");
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const admin = isAdmin(email);
@@ -63,6 +65,16 @@ export default function GatheringPage() {
     const interval = setInterval(load, 5000);
     return () => clearInterval(interval);
   }, [isLoaded]);
+
+  useEffect(() => {
+    if (!("Notification" in window)) { setNotifStatus("unsupported"); return; }
+    setNotifStatus(Notification.permission === "granted" ? "granted" : Notification.permission === "denied" ? "denied" : "unknown");
+  }, []);
+
+  const enableNotif = async () => {
+    const result = await registerPush();
+    setNotifStatus(result);
+  };
 
   const callGather = async () => {
     if (saving) return;
@@ -110,6 +122,24 @@ export default function GatheringPage() {
 
   return (
     <div className="px-4 pt-6 pb-4">
+      {/* 알림 상태 배너 */}
+      {notifStatus === "unknown" && (
+        <button type="button" onClick={enableNotif}
+          className="w-full flex items-center justify-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl px-4 py-2.5 text-sm font-medium mb-4">
+          <BellRing size={15} /> 집합 알림 받기 (탭해서 켜기)
+        </button>
+      )}
+      {notifStatus === "denied" && (
+        <div className="w-full flex items-center gap-2 bg-gray-50 border border-gray-200 text-gray-500 rounded-xl px-4 py-2.5 text-sm mb-4">
+          <BellOff size={15} /> 알림 차단됨 — 브라우저 설정에서 허용해야 해요
+        </div>
+      )}
+      {notifStatus === "granted" && (
+        <div className="w-full flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 rounded-xl px-4 py-2.5 text-sm mb-4">
+          <Bell size={15} /> 알림 켜짐 ✓
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold text-gray-900">🚨 집합</h1>
         {admin && call && (

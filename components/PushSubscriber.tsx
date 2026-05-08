@@ -10,42 +10,50 @@ function urlBase64ToUint8Array(base64String: string) {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
+async function saveSubscription(sub: PushSubscription) {
+  await fetch("/api/push", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sub),
+  });
+}
+
+export async function registerPush(): Promise<"granted" | "denied" | "unsupported"> {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return "unsupported";
+
+  try {
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+
+    const permission = await Notification.requestPermission();
+    if (permission !== "granted") return "denied";
+
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(
+          process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
+        ),
+      });
+    }
+    // 항상 Redis에 재저장 (Redis 초기화 대비)
+    await saveSubscription(sub);
+    return "granted";
+  } catch {
+    return "denied";
+  }
+}
+
 export default function PushSubscriber() {
   const { user, isLoaded } = useUser();
 
   useEffect(() => {
     if (!isLoaded || !user) return;
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-
-    const register = async () => {
-      try {
-        const reg = await navigator.serviceWorker.register("/sw.js");
-        await navigator.serviceWorker.ready;
-
-        if (Notification.permission === "denied") return;
-
-        const permission = await Notification.requestPermission();
-        if (permission !== "granted") return;
-
-        const existing = await reg.pushManager.getSubscription();
-        if (existing) return;
-
-        const sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(
-            process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!
-          ),
-        });
-
-        await fetch("/api/push", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sub),
-        });
-      } catch { /* 알림 미지원 환경 무시 */ }
-    };
-
-    register();
+    // 자동 등록 시도 (이미 권한 있으면 조용히 구독 갱신)
+    if (Notification.permission === "granted") {
+      registerPush().catch(() => {});
+    }
   }, [isLoaded, user]);
 
   return null;
