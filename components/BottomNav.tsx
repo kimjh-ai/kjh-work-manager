@@ -14,10 +14,10 @@ import { isAdmin } from "@/lib/auth";
 
 const adminNav = [
   { href: "/", icon: LayoutDashboard, label: "홈" },
-  { href: "/stocks", icon: TrendingUp, label: "주식" },
   { href: "/gathering", icon: Users, label: "집합" },
   { href: "/board", icon: MessageSquare, label: "게시판" },
-  { href: "/more", icon: MoreHorizontal, label: "더보기" },
+  { href: "/more", icon: MoreHorizontal, label: "프로필만들기" },
+  { href: "/stocks", icon: TrendingUp, label: "주식" },
 ];
 
 const userNav = [
