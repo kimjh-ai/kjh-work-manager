@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import Image from "next/image";
 import { format } from "date-fns";
@@ -17,6 +19,7 @@ import {
 } from "lucide-react";
 import { getTodos, saveTodos } from "@/lib/storage";
 import { Todo } from "@/lib/types";
+import { isAdmin } from "@/lib/auth";
 
 interface StockData {
   symbol: string;
@@ -40,10 +43,20 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 
 export default function Dashboard() {
+  const { user, isLoaded } = useUser();
+  const router = useRouter();
   const [todos, setTodos] = useState<Todo[]>([]);
   const [stocks, setStocks] = useState<StockData[]>([]);
   const [stockLoading, setStockLoading] = useState(true);
   const today = format(new Date(), "yyyy년 M월 d일 (EEE)", { locale: ko });
+
+  // 일반 유저는 주식 페이지로 리다이렉트
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (user && !isAdmin(user.primaryEmailAddress?.emailAddress)) {
+      router.replace("/stocks");
+    }
+  }, [isLoaded, user, router]);
 
   useEffect(() => {
     setTodos(getTodos());
