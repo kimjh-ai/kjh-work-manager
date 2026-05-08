@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { format } from "date-fns";
 import { TrendingUp, TrendingDown, Minus, Star, StarOff, RefreshCw, Search, X } from "lucide-react";
-import { getWatchlist, saveWatchlist } from "@/lib/storage";
+// watchlist는 Redis API로 관리 (cross-device sync)
 import { WatchlistItem } from "@/lib/types";
 
 interface PreMarket {
@@ -109,9 +109,13 @@ export default function StocksPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const wl = getWatchlist();
-    setWatchlist(wl);
     try {
+      // Redis에서 관심종목 불러오기
+      const wlRes = await fetch("/api/watchlist");
+      const wlData = await wlRes.json();
+      const wl: WatchlistItem[] = wlData.watchlist ?? [];
+      setWatchlist(wl);
+
       const [popRes, watchRes] = await Promise.all([
         fetch("/api/stocks?type=popular"),
         wl.length > 0
@@ -167,11 +171,17 @@ export default function StocksPage() {
   };
 
   const toggleWatch = async (symbol: string, name: string) => {
-    const cur = getWatchlist();
-    const exists = cur.some((w) => w.symbol === symbol);
-    const updated = exists ? cur.filter((w) => w.symbol !== symbol) : [...cur, { symbol, name }];
-    saveWatchlist(updated);
+    const exists = watchlist.some((w) => w.symbol === symbol);
+    const updated = exists
+      ? watchlist.filter((w) => w.symbol !== symbol)
+      : [...watchlist, { symbol, name }];
     setWatchlist(updated);
+    // Redis에 저장
+    fetch("/api/watchlist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ watchlist: updated }),
+    });
     if (!exists) {
       try {
         const res = await fetch(`/api/stocks?symbols=${updated.map((w) => w.symbol).join(",")}`);
