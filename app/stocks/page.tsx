@@ -225,7 +225,7 @@ export default function StocksPage() {
           ) : (
             <div className="card">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-gray-500">📊 거래량 상위 20</span>
+                <span className="text-xs font-semibold text-gray-500">📊 KOSPI 주요 종목 20</span>
                 <span className="text-xs text-gray-400">{popular.length}종목</span>
               </div>
               {popular.map((s) => (

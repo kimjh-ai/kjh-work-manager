@@ -1,5 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// 코스피 주요 종목 (거래량 API 실패 시 기본값)
+const POPULAR_KR = [
+  { symbol: "005930", name: "삼성전자" },
+  { symbol: "000660", name: "SK하이닉스" },
+  { symbol: "034020", name: "두산에너빌리티" },
+  { symbol: "373220", name: "LG에너지솔루션" },
+  { symbol: "005380", name: "현대차" },
+  { symbol: "000270", name: "기아" },
+  { symbol: "035420", name: "NAVER" },
+  { symbol: "035720", name: "카카오" },
+  { symbol: "068270", name: "셀트리온" },
+  { symbol: "207940", name: "삼성바이오로직스" },
+  { symbol: "105560", name: "KB금융" },
+  { symbol: "055550", name: "신한지주" },
+  { symbol: "006400", name: "삼성SDI" },
+  { symbol: "051910", name: "LG화학" },
+  { symbol: "005490", name: "POSCO홀딩스" },
+  { symbol: "012450", name: "한화에어로스페이스" },
+  { symbol: "066570", name: "LG전자" },
+  { symbol: "096770", name: "SK이노베이션" },
+  { symbol: "009150", name: "삼성전기" },
+  { symbol: "012330", name: "현대모비스" },
+];
+
 const NAVER_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
@@ -72,73 +96,33 @@ async function fetchOne(symbol: string) {
   };
 }
 
-// 네이버 증권 거래량 상위 종목 실시간 조회
-async function fetchVolumeRanking(): Promise<{ symbol: string; name: string }[]> {
-  try {
-    const res = await fetch(
-      "https://m.stock.naver.com/front-api/v1/rank/trade/upper?market=KOSPI&count=20",
-      {
-        headers: NAVER_HEADERS,
-        next: { revalidate: 300 },
-      }
-    );
-    if (!res.ok) throw new Error("not ok");
-    const data = await res.json();
-    const list: { itemCode?: string; itemName?: string; stockName?: string }[] =
-      data?.result?.stocks ?? data?.stocks ?? data?.result?.list ?? [];
-    if (list.length === 0) throw new Error("empty");
-    return list.map((item) => ({
-      symbol: item.itemCode ?? "",
-      name: item.itemName ?? item.stockName ?? "",
-    })).filter((s) => s.symbol);
-  } catch {
-    // KOSDAQ 포함 전체 시장으로 재시도
-    try {
-      const res2 = await fetch(
-        "https://m.stock.naver.com/front-api/v1/rank/trade/upper?market=STOCK&count=20",
-        { headers: NAVER_HEADERS, next: { revalidate: 300 } }
-      );
-      if (!res2.ok) throw new Error("not ok");
-      const data2 = await res2.json();
-      const list2: { itemCode?: string; itemName?: string; stockName?: string }[] =
-        data2?.result?.stocks ?? data2?.stocks ?? data2?.result?.list ?? [];
-      if (list2.length === 0) throw new Error("empty");
-      return list2.map((item) => ({
-        symbol: item.itemCode ?? "",
-        name: item.itemName ?? item.stockName ?? "",
-      })).filter((s) => s.symbol);
-    } catch {
-      return [];
-    }
-  }
-}
-
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const symbolsParam = searchParams.get("symbols");
   const type = searchParams.get("type");
 
+  let targets: { symbol: string; name: string }[] = [];
+
   if (type === "popular") {
-    // 거래량 상위 실시간 조회
-    const rankList = await fetchVolumeRanking();
-    if (rankList.length > 0) {
-      const results = await Promise.all(rankList.map((t) => fetchOne(t.symbol)));
-      const stocks = results
-        .filter(Boolean)
-        .map((s, i) => ({ ...s!, name: s!.name || rankList[i]?.name || s!.symbol }));
-      return NextResponse.json({ stocks, listType: "volume" });
-    }
-    // 거래량 API 실패 시 빈 배열 반환 (프론트에서 처리)
-    return NextResponse.json({ stocks: [], listType: "volume" });
-  }
-
-  if (symbolsParam) {
+    targets = POPULAR_KR;
+  } else if (symbolsParam) {
     const syms = symbolsParam.split(",");
-    const targets = syms.map((s) => ({ symbol: s, name: s }));
-    const results = await Promise.all(targets.map((t) => fetchOne(t.symbol)));
-    const stocks = results.filter(Boolean);
-    return NextResponse.json({ stocks });
+    targets = syms.map((s) => ({
+      symbol: s,
+      name: POPULAR_KR.find((p) => p.symbol === s)?.name ?? s,
+    }));
+  } else {
+    targets = POPULAR_KR.slice(0, 10);
   }
 
-  return NextResponse.json({ stocks: [] });
+  try {
+    const results = await Promise.all(targets.map((t) => fetchOne(t.symbol)));
+    const stocks = results
+      .filter(Boolean)
+      .map((s, i) => ({ ...s!, name: s!.name || targets[i]?.name || s!.symbol }));
+    return NextResponse.json({ stocks, popularList: POPULAR_KR });
+  } catch (err) {
+    console.error("Naver stock fetch error:", err);
+    return NextResponse.json({ stocks: [], popularList: POPULAR_KR });
+  }
 }
