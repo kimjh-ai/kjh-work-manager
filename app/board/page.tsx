@@ -3,8 +3,15 @@
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { format } from "date-fns";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, X, MessageCircle, Send } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
+
+interface Comment {
+  id: string;
+  content: string;
+  author: string;
+  createdAt: string;
+}
 
 interface Post {
   id: string;
@@ -12,6 +19,7 @@ interface Post {
   content: string;
   author: string;
   createdAt: string;
+  comments?: Comment[];
 }
 
 export default function BoardPage() {
@@ -22,6 +30,8 @@ export default function BoardPage() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const [openComments, setOpenComments] = useState<Set<string>>(new Set());
+  const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const admin = isAdmin(email);
@@ -52,9 +62,34 @@ export default function BoardPage() {
     } finally { setSaving(false); }
   };
 
-  const remove = async (id: string) => {
+  const removePost = async (id: string) => {
     if (!confirm("삭제할까요?")) return;
     await fetch(`/api/board?id=${id}`, { method: "DELETE" });
+    await load();
+  };
+
+  const toggleComments = (postId: string) => {
+    setOpenComments((prev) => {
+      const next = new Set(prev);
+      next.has(postId) ? next.delete(postId) : next.add(postId);
+      return next;
+    });
+  };
+
+  const submitComment = async (postId: string) => {
+    const text = commentInputs[postId]?.trim();
+    if (!text) return;
+    await fetch("/api/board/comment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ postId, content: text, author: myName }),
+    });
+    setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
+    await load();
+  };
+
+  const removeComment = async (postId: string, commentId: string) => {
+    await fetch(`/api/board/comment?postId=${postId}&commentId=${commentId}`, { method: "DELETE" });
     await load();
   };
 
@@ -80,7 +115,7 @@ export default function BoardPage() {
         <div className="card mb-4 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">새 글</h2>
-            <button type="button" onClick={() => setShowForm(false)} className="text-gray-400">
+            <button type="button" onClick={() => setShowForm(false)} aria-label="닫기" className="text-gray-400">
               <X size={16} />
             </button>
           </div>
@@ -108,28 +143,81 @@ export default function BoardPage() {
           <p className="text-sm">게시글이 없습니다</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {posts.map((post) => (
-            <div key={post.id} className="card">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900">{post.title}</p>
-                  {post.content && (
-                    <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{post.content}</p>
+        <div className="space-y-3">
+          {posts.map((post) => {
+            const commentsOpen = openComments.has(post.id);
+            const commentCount = post.comments?.length ?? 0;
+            return (
+              <div key={post.id} className="card">
+                {/* 게시글 본문 */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900">{post.title}</p>
+                    {post.content && (
+                      <p className="text-xs text-gray-600 mt-1 whitespace-pre-wrap">{post.content}</p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-2">
+                      {post.author} · {format(new Date(post.createdAt), "MM/dd HH:mm")}
+                    </p>
+                  </div>
+                  {(admin || post.author === myName) && (
+                    <button type="button" onClick={() => removePost(post.id)} aria-label="글 삭제"
+                      className="text-gray-300 hover:text-red-400 flex-shrink-0">
+                      <Trash2 size={15} />
+                    </button>
                   )}
-                  <p className="text-xs text-gray-400 mt-2">
-                    {post.author} · {format(new Date(post.createdAt), "MM/dd HH:mm")}
-                  </p>
                 </div>
-                {(admin || post.author === myName) && (
-                  <button type="button" onClick={() => remove(post.id)}
-                    className="text-gray-300 hover:text-red-400 flex-shrink-0">
-                    <Trash2 size={15} />
-                  </button>
+
+                {/* 댓글 토글 버튼 */}
+                <button type="button" onClick={() => toggleComments(post.id)}
+                  className="flex items-center gap-1 mt-3 text-xs text-gray-400 hover:text-blue-500 transition-colors">
+                  <MessageCircle size={13} />
+                  댓글 {commentCount > 0 ? commentCount : ""}
+                  <span className="text-gray-300">{commentsOpen ? "▲" : "▼"}</span>
+                </button>
+
+                {/* 댓글 영역 */}
+                {commentsOpen && (
+                  <div className="mt-2 pt-2 border-t border-gray-100 space-y-2">
+                    {(post.comments ?? []).map((c) => (
+                      <div key={c.id} className="flex items-start gap-2">
+                        <div className="flex-1 bg-gray-50 rounded-xl px-3 py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium text-gray-700">{c.author}</span>
+                            <span className="text-xs text-gray-400">{format(new Date(c.createdAt), "HH:mm")}</span>
+                          </div>
+                          <p className="text-xs text-gray-600 mt-0.5">{c.content}</p>
+                        </div>
+                        {(admin || c.author === myName) && (
+                          <button type="button" aria-label="댓글 삭제"
+                            onClick={() => removeComment(post.id, c.id)}
+                            className="text-gray-300 hover:text-red-400 mt-1 flex-shrink-0">
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* 댓글 입력 */}
+                    <div className="flex gap-2 mt-2">
+                      <input
+                        type="text"
+                        placeholder="댓글 입력..."
+                        value={commentInputs[post.id] ?? ""}
+                        onChange={(e) => setCommentInputs((prev) => ({ ...prev, [post.id]: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === "Enter") submitComment(post.id); }}
+                        className="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                      <button type="button" onClick={() => submitComment(post.id)} aria-label="댓글 등록"
+                        className="bg-blue-500 text-white rounded-xl px-3 py-1.5 flex-shrink-0">
+                        <Send size={13} />
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

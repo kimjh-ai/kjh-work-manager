@@ -104,7 +104,7 @@ export default function GatheringPage() {
             <X size={13} /> 해제
           </button>
         )}
-        {admin && !call && !showForm && (
+        {!call && !showForm && (
           <button type="button" onClick={() => setShowForm(true)}
             className="flex items-center gap-1 bg-red-500 text-white rounded-xl px-3 py-2 text-sm font-medium">
             <Bell size={15} /> 집합 발령
@@ -112,8 +112,8 @@ export default function GatheringPage() {
         )}
       </div>
 
-      {/* 관리자 발령 폼 */}
-      {admin && showForm && (
+      {/* 발령 폼 */}
+      {showForm && (
         <div className="card mb-4 space-y-3">
           <h2 className="text-sm font-semibold text-gray-700">📍 집합 장소 선택</h2>
           <div className="grid grid-cols-3 gap-2">
