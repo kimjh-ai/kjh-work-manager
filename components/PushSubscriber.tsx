@@ -50,6 +50,18 @@ export default function PushSubscriber() {
 
   useEffect(() => {
     if (!isLoaded || !user) return;
+
+    // 최신 프로필 사진 Redis에 저장 (게시판 소급 적용용)
+    const name = user.firstName ?? user.username ?? user.primaryEmailAddress?.emailAddress?.split("@")[0] ?? "";
+    const imageUrl = user.imageUrl ?? null;
+    if (name && imageUrl) {
+      fetch("/api/profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, imageUrl }),
+      }).catch(() => {});
+    }
+
     // 자동 등록 시도 (이미 권한 있으면 조용히 구독 갱신)
     if (Notification.permission === "granted") {
       registerPush().catch(() => {});
