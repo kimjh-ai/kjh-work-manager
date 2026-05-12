@@ -5,6 +5,30 @@ import webpush from "web-push";
 export const runtime = "nodejs";
 
 const KEY = "gather:current";
+const SUB_KEY = "push:subscriptions";
+
+async function sendPush(title: string, body: string) {
+  const vKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const vPriv = process.env.VAPID_PRIVATE_KEY;
+  const vEmail = process.env.VAPID_EMAIL;
+  if (!vKey || !vPriv || !vEmail) return;
+
+  webpush.setVapidDetails(vEmail, vKey, vPriv);
+  const subRaw = await redis.get(SUB_KEY);
+  const subs: webpush.PushSubscription[] = subRaw ? JSON.parse(subRaw) : [];
+  const payload = JSON.stringify({ title, body });
+
+  const results = await Promise.allSettled(
+    subs.map((sub) => webpush.sendNotification(sub, payload))
+  );
+  const validSubs = subs.filter((_, i) => {
+    const r = results[i];
+    return !(r.status === "rejected" && (r.reason as { statusCode?: number })?.statusCode === 410);
+  });
+  if (validSubs.length !== subs.length) {
+    await redis.set(SUB_KEY, JSON.stringify(validSubs));
+  }
+}
 
 export async function GET() {
   try {
@@ -18,62 +42,61 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const body = await req.json();
 
-  // 체크인
+  // 체크인 (상태 변경 허용 - 기존 응답 덮어씀)
   if (body.action === "checkin") {
     try {
       const raw = await redis.get(KEY);
       if (!raw) return NextResponse.json({ ok: false });
       const call = JSON.parse(raw);
-      const already = call.checkins.some(
-        (c: string | { name: string }) => (typeof c === "string" ? c : c.name) === body.name
+      call.checkins = call.checkins.filter(
+        (c: string | { name: string }) => (typeof c === "string" ? c : c.name) !== body.name
       );
-      if (!already) {
-        call.checkins.push({ name: body.name, imageUrl: body.imageUrl ?? null });
-        await redis.set(KEY, JSON.stringify(call));
-      }
+      call.checkins.push({
+        name: body.name,
+        imageUrl: body.imageUrl ?? null,
+        status: body.status ?? "going",
+        reason: body.reason ?? "",
+      });
+      await redis.set(KEY, JSON.stringify(call));
     } catch { /* no-op */ }
     return NextResponse.json({ ok: true });
   }
 
-  // 집합 발령
+  // 재알림
+  if (body.action === "renotify") {
+    try {
+      const raw = await redis.get(KEY);
+      if (!raw) return NextResponse.json({ ok: false });
+      const call = JSON.parse(raw);
+      const locationEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
+      const emoji = locationEmoji[call.location] ?? "📍";
+      await sendPush(
+        `🔔 집합 재알림! ${emoji} ${call.location}`,
+        `아직 응답 안 하신 분들 확인해주세요! - ${call.calledBy}`
+      );
+    } catch { /* no-op */ }
+    return NextResponse.json({ ok: true });
+  }
+
+  // 신규 집합 발령
   const call = {
     id: Date.now().toString(),
     location: body.location,
     message: body.message ?? "",
     calledBy: body.calledBy,
     calledAt: new Date().toISOString(),
-    checkins: [] as string[],
+    checkins: [],
   };
   await redis.set(KEY, JSON.stringify(call));
 
-  // 푸시 알림 전송
   try {
-    const vKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-    const vPriv = process.env.VAPID_PRIVATE_KEY;
-    const vEmail = process.env.VAPID_EMAIL;
-    if (vKey && vPriv && vEmail) {
-      webpush.setVapidDetails(vEmail, vKey, vPriv);
-      const subRaw = await redis.get("push:subscriptions");
-      const subs: webpush.PushSubscription[] = subRaw ? JSON.parse(subRaw) : [];
-      const locationEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
-      const emoji = locationEmoji[body.location] ?? "📍";
-      const payload = JSON.stringify({
-        title: `🚨 집합! ${emoji} ${body.location}`,
-        body: body.message ? `"${body.message}" - ${body.calledBy}` : `${body.calledBy}님이 집합을 발령했습니다`,
-      });
-      // 만료된 구독(410) 자동 제거
-      const results = await Promise.allSettled(
-        subs.map((sub) => webpush.sendNotification(sub, payload))
-      );
-      const validSubs = subs.filter((_, i) => {
-        const r = results[i];
-        return !(r.status === "rejected" && (r.reason as { statusCode?: number })?.statusCode === 410);
-      });
-      if (validSubs.length !== subs.length) {
-        await redis.set("push:subscriptions", JSON.stringify(validSubs));
-      }
-    }
-  } catch { /* 푸시 실패해도 집합은 저장됨 */ }
+    const locationEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
+    const emoji = locationEmoji[body.location] ?? "📍";
+    await sendPush(
+      `🚨 집합! ${emoji} ${body.location}`,
+      body.message ? `"${body.message}" - ${body.calledBy}` : `${body.calledBy}님이 집합을 발령했습니다`
+    );
+  } catch { /* no-op */ }
 
   return NextResponse.json({ ok: true });
 }

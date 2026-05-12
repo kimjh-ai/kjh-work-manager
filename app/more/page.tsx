@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useUser, useClerk } from "@clerk/nextjs";
 import {
   AlertTriangle, Package, DollarSign, Calendar,
-  Download, ChevronRight, CheckSquare, FileText, LogOut, User,
+  Download, ChevronRight, CheckSquare, FileText, LogOut, User, Gamepad2,
 } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 
@@ -187,6 +187,18 @@ export default function MorePage() {
           </button>
         </div>
       )}
+
+      {/* 게임 */}
+      <Link href="/games" className="card flex items-center gap-4 hover:bg-gray-50 transition-colors mb-4">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-pink-50 flex-shrink-0">
+          <Gamepad2 size={20} className="text-pink-500" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-gray-800">🎮 게임</p>
+          <p className="text-xs text-gray-500 mt-0.5">사다리 · 랜덤뽑기 · 홀짝</p>
+        </div>
+        <ChevronRight size={16} className="text-gray-400" />
+      </Link>
 
       {/* 앱 설치 안내 */}
       <div className="card mt-2">
