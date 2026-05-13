@@ -6,10 +6,15 @@ import { Bell, X, BellOff, BellRing, Clock, RefreshCw, Plus, Shuffle, RotateCcw 
 import { format } from "date-fns";
 import Avatar from "@/components/Avatar";
 import { registerPush } from "@/components/PushSubscriber";
+import MoodCard from "@/components/today/MoodCard";
+import CoffeeRunCard from "@/components/today/CoffeeRunCard";
+import VoteCard from "@/components/today/VoteCard";
+import DutyPickerCard from "@/components/today/DutyPickerCard";
+import PraiseCard from "@/components/today/PraiseCard";
 
 type Location = "3층" | "옥상" | "편의점";
 type Status = "going" | "waiting" | "cant";
-type PageTab = "gather" | "games";
+type PageTab = "gather" | "today" | "games";
 type GameTab = "ladder" | "random" | "oddeven";
 
 interface Checkin {
@@ -293,15 +298,30 @@ export default function GatheringPage() {
     <div className="px-4 pt-6 pb-4">
       {/* 페이지 탭 */}
       <div className="flex gap-1 mb-5 bg-gray-100 rounded-xl p-1">
-        <button type="button" onClick={() => setPageTab("gather")}
-          className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${pageTab==="gather"?"bg-white text-gray-900 shadow-sm":"text-gray-500"}`}>
-          🚨 집합
-        </button>
-        <button type="button" onClick={() => setPageTab("games")}
-          className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${pageTab==="games"?"bg-white text-gray-900 shadow-sm":"text-gray-500"}`}>
-          🎮 게임
-        </button>
+        {([
+          ["gather", "🚨 집합"],
+          ["today",  "☀️ 오늘"],
+          ["games",  "🎮 게임"],
+        ] as [PageTab, string][]).map(([key, label]) => (
+          <button key={key} type="button" onClick={() => setPageTab(key)}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              pageTab === key ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
+            }`}>
+            {label}
+          </button>
+        ))}
       </div>
+
+      {/* ── 오늘 탭 ── */}
+      {pageTab === "today" && (
+        <div>
+          <MoodCard myName={myName} myImage={myImage} />
+          <CoffeeRunCard myName={myName} myImage={myImage} />
+          <VoteCard myName={myName} />
+          <DutyPickerCard myName={myName} />
+          <PraiseCard myName={myName} />
+        </div>
+      )}
 
       {/* ── 게임 탭 ── */}
       {pageTab === "games" && (
