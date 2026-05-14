@@ -4,52 +4,59 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
-import Image from "next/image";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import {
-  CheckCircle2,
-  Circle,
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  AlertTriangle,
-  ChevronRight,
-  RefreshCw,
+  CheckCircle2, Circle, TrendingUp, TrendingDown, Minus,
+  AlertTriangle, ChevronRight, Users, MessageSquare,
+  Pin, RefreshCw,
 } from "lucide-react";
 import { getTodos, saveTodos } from "@/lib/storage";
 import { Todo } from "@/lib/types";
+import Avatar from "@/components/Avatar";
 
-interface StockData {
-  symbol: string;
-  name: string;
-  price: number;
-  change: number;
-  changePercent: number;
-  marketStatus?: string;
-  preMarket?: { price: number; change: number; changePercent: number; session: string } | null;
-}
+interface StockData { symbol: string; name: string; price: number; change: number; changePercent: number }
+interface OnlineUser { name: string; imageUrl: string | null }
+interface Notice { id: string; title: string; content: string; author: string; important: boolean; createdAt: string }
+interface Birthday { name: string; month: number; day: number; imageUrl: string | null }
 
 const CATEGORY_LABEL: Record<string, string> = {
-  quality: "품질",
-  deadline: "마감",
-  document: "문서",
-  meeting: "회의",
-  expense: "경비",
-  material: "부자재",
-  general: "일반",
+  quality: "품질", deadline: "마감", document: "문서", meeting: "회의",
+  expense: "경비", material: "부자재", general: "일반",
 };
 
+function daysUntil(month: number, day: number) {
+  const today = new Date();
+  const thisYear = new Date(today.getFullYear(), month - 1, day);
+  const diff = thisYear.getTime() - new Date().setHours(0, 0, 0, 0);
+  if (diff >= 0) return Math.ceil(diff / 86400000);
+  return Math.ceil((new Date(today.getFullYear() + 1, month - 1, day).getTime() - Date.now()) / 86400000);
+}
+
+function greeting(name: string) {
+  const h = new Date().getHours();
+  if (h < 11) return `좋은 아침이에요, ${name}님 🌅`;
+  if (h < 13) return `점심 시간이에요, ${name}님 🍱`;
+  if (h < 18) return `오후도 화이팅, ${name}님 ☀️`;
+  if (h < 21) return `퇴근하셨나요, ${name}님 🌙`;
+  return `야근 중이세요, ${name}님? 😅`;
+}
 
 export default function Dashboard() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
+
   const [todos, setTodos] = useState<Todo[]>([]);
   const [stocks, setStocks] = useState<StockData[]>([]);
   const [stockLoading, setStockLoading] = useState(true);
-  const today = format(new Date(), "yyyy년 M월 d일 (EEE)", { locale: ko });
+  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [birthdays, setBirthdays] = useState<Birthday[]>([]);
 
-  // 로그인 안 된 경우만 리다이렉트
+  const today = format(new Date(), "M월 d일 (EEE)", { locale: ko });
+  const myName = user?.firstName ?? user?.username ?? user?.primaryEmailAddress?.emailAddress?.split("@")[0] ?? "";
+  const myImage = user?.imageUrl ?? null;
+
   useEffect(() => {
     if (isLoaded && !user) router.replace("/sign-in");
   }, [isLoaded, user, router]);
@@ -61,240 +68,233 @@ export default function Dashboard() {
     return () => window.removeEventListener("todosUpdated", refresh);
   }, []);
 
-  const loadStocks = async () => {
-    setStockLoading(true);
-    try {
-      const res = await fetch(
-        "/api/stocks?symbols=005930,000660,034020,373220,005380"
-      );
-      const data = await res.json();
-      setStocks(data.stocks ?? []);
-    } catch {
-      setStocks([]);
-    } finally {
-      setStockLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadStocks();
-  }, []);
-
-  const todayStr = format(new Date(), "yyyy-MM-dd");
-  const todayTodos = todos.filter((t) => {
-    if (t.completed) return false;
-    if (!t.dueDate) return true;
-    return t.dueDate <= todayStr;
-  });
-
-  const completedCount = todos.filter((t) => t.completed).length;
-  const total = todos.length;
+    if (!isLoaded || !user) return;
+    // 주식
+    fetch("/api/stocks?symbols=005930,000660,034020,373220,005380")
+      .then((r) => r.json()).then((d) => setStocks(d.stocks ?? [])).catch(() => {}).finally(() => setStockLoading(false));
+    // 온라인 유저
+    fetch("/api/online").then((r) => r.json()).then((d) => setOnlineUsers(d.users ?? [])).catch(() => {});
+    // 공지
+    fetch("/api/notice").then((r) => r.json()).then((d) => setNotices(d.notices ?? [])).catch(() => {});
+    // 생일
+    fetch("/api/birthday").then((r) => r.json()).then((d) => setBirthdays(d.birthdays ?? [])).catch(() => {});
+  }, [isLoaded, user]);
 
   const toggle = (id: string) => {
-    const updated = todos.map((t) =>
-      t.id === id
-        ? { ...t, completed: !t.completed, updatedAt: new Date().toISOString() }
-        : t
-    );
-    setTodos(updated);
-    saveTodos(updated);
+    const updated = todos.map((t) => t.id === id ? { ...t, completed: !t.completed, updatedAt: new Date().toISOString() } : t);
+    setTodos(updated); saveTodos(updated);
   };
 
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const pendingTodos = todos.filter((t) => !t.completed && (!t.dueDate || t.dueDate <= todayStr));
+  const completedCount = todos.filter((t) => t.completed).length;
+
+  // 가까운 생일 (30일 이내)
+  const nearBirthdays = birthdays
+    .map((b) => ({ ...b, days: daysUntil(b.month, b.day) }))
+    .filter((b) => b.days <= 7)
+    .sort((a, b) => a.days - b.days);
+
+  const topNotice = notices.find((n) => n.important) ?? notices[0];
+
+  if (!isLoaded || !user) return null;
+
   return (
-    <div className="px-4 pt-6 pb-4 space-y-4">
+    <div className="min-h-screen bg-[#f8f9fa]">
       {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-xs text-gray-500">{today}</p>
-          <h1 className="text-2xl font-bold text-gray-900 mt-0.5">안녕하세요 👋</h1>
-          <p className="text-sm text-gray-500 mt-0.5">생산품질팀 업무 현황</p>
-        </div>
-        <Image
-          src="/pig.jpg"
-          alt="돼지"
-          width={64}
-          height={64}
-          className="rounded-full object-cover border-2 border-pink-200"
-          priority
-        />
-      </div>
-
-      {/* 진행률 카드 */}
-      <div className="bg-blue-600 rounded-2xl p-4 text-white">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-medium opacity-90">전체 할 일 진행률</span>
-          <span className="text-sm opacity-80">
-            {completedCount}/{total}
-          </span>
-        </div>
-        <div className="w-full bg-blue-500 rounded-full h-2 mb-2">
-          <div
-            className="progress-bar bg-white rounded-full h-2 transition-all"
-            style={
-              {
-                "--progress": total
-                  ? `${(completedCount / total) * 100}%`
-                  : "0%",
-              } as React.CSSProperties
+      <div className="bg-white px-5 pt-14 pb-5 border-b border-gray-100">
+        <div className="flex items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] text-gray-400">{today}</p>
+            <p className="text-[20px] font-bold text-gray-900 mt-0.5 leading-snug">{greeting(myName)}</p>
+          </div>
+          <Link href="/profile">
+            {myImage
+              ? <img src={myImage} alt="프로필" className="w-12 h-12 rounded-full object-cover ring-2 ring-gray-100 flex-shrink-0" />
+              : <div className="w-12 h-12 rounded-full bg-gray-100 flex-shrink-0" />
             }
-          />
-        </div>
-        <p className="text-xs opacity-80">
-          {total === 0
-            ? "할 일을 추가해보세요"
-            : `${total - completedCount}개 남음`}
-        </p>
-      </div>
-
-      {/* 주식 위젯 */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-700">📈 주식</h2>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">
-              {format(new Date(), "HH:mm")} 기준
-            </span>
-            <button
-              type="button"
-              onClick={loadStocks}
-              aria-label="주식 새로고침"
-              className="text-gray-400 hover:text-blue-600 transition-colors"
-            >
-              <RefreshCw size={14} />
-            </button>
-          </div>
-        </div>
-        {stockLoading ? (
-          <div className="flex items-center justify-center py-4">
-            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : stocks.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-2">
-            데이터를 불러올 수 없습니다
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {stocks.map((s) => {
-              const up = s.change > 0;
-              const down = s.change < 0;
-              const Icon = up ? TrendingUp : down ? TrendingDown : Minus;
-              const cls = up ? "up" : down ? "down" : "flat";
-              return (
-                <div
-                  key={s.symbol}
-                  className="flex items-center justify-between py-1"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium text-gray-800">{s.name}</span>
-                    {s.marketStatus === "PREOPEN" && (
-                      <span className="text-[10px] bg-orange-100 text-orange-600 px-1 rounded">프리장</span>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-sm font-semibold ${cls}`}>
-                        {s.price.toLocaleString()}
-                      </span>
-                      <div className={`flex items-center gap-0.5 text-xs ${cls}`}>
-                        <Icon size={12} />
-                        <span>{up ? "+" : ""}{s.changePercent.toFixed(2)}%</span>
-                      </div>
-                    </div>
-                    {s.preMarket && (
-                      <div className={`text-[11px] flex items-center justify-end gap-1 ${s.preMarket.change > 0 ? "up" : s.preMarket.change < 0 ? "down" : "flat"}`}>
-                        <span className="text-gray-400">프리</span>
-                        <span>{s.preMarket.price.toLocaleString()}</span>
-                        <span>({s.preMarket.change > 0 ? "+" : ""}{s.preMarket.changePercent.toFixed(2)}%)</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <Link
-          href="/stocks"
-          className="flex items-center justify-center gap-1 mt-3 pt-3 border-t border-gray-100 text-xs text-blue-600 font-medium"
-        >
-          인기종목 더보기 <ChevronRight size={14} />
-        </Link>
-      </div>
-
-      {/* 오늘 할 일 */}
-      <div className="card">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-700">📋 오늘 할 일</h2>
-          <Link
-            href="/todos"
-            className="text-xs text-blue-600 font-medium flex items-center gap-0.5"
-          >
-            전체보기 <ChevronRight size={13} />
           </Link>
         </div>
-        {todayTodos.length === 0 ? (
-          <div className="text-center py-4">
-            <CheckCircle2 size={32} className="mx-auto text-green-400 mb-2" />
-            <p className="text-sm text-gray-500">모든 할 일을 완료했어요!</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {todayTodos.slice(0, 6).map((todo) => (
-              <button
-                key={todo.id}
-                type="button"
-                onClick={() => toggle(todo.id)}
-                aria-label={`${todo.title} ${todo.completed ? "완료 취소" : "완료"}`}
-                className="w-full flex items-start gap-3 text-left hover:bg-gray-50 rounded-xl p-2 -mx-2 transition-colors"
-              >
-                <div className="mt-0.5 flex-shrink-0">
-                  {todo.completed ? (
-                    <CheckCircle2 size={18} className="text-green-500" />
-                  ) : (
-                    <Circle size={18} className="text-gray-300" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p
-                    className={`text-sm ${
-                      todo.completed
-                        ? "line-through text-gray-400"
-                        : "text-gray-800"
-                    }`}
-                  >
-                    {todo.title}
-                  </p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span
-                      className={`text-xs px-1.5 py-0.5 rounded-full priority-badge-${todo.priority}`}
-                    >
-                      {CATEGORY_LABEL[todo.category]}
-                    </span>
-                    {todo.dueDate && (
-                      <span className="text-xs text-gray-400">
-                        {todo.dueDate}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                {todo.priority === "high" && !todo.completed && (
-                  <AlertTriangle
-                    size={14}
-                    className="text-red-400 mt-0.5 flex-shrink-0"
-                  />
-                )}
-              </button>
-            ))}
-            {todayTodos.length > 6 && (
-              <Link
-                href="/todos"
-                className="block text-center text-xs text-blue-600 pt-1"
-              >
-                +{todayTodos.length - 6}개 더보기
-              </Link>
-            )}
+
+        {/* 온라인 유저 */}
+        {onlineUsers.length > 0 && (
+          <div className="flex items-center gap-2 mt-4 bg-green-50 rounded-2xl px-3 py-2.5">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+            </span>
+            <div className="flex -space-x-1.5">
+              {onlineUsers.slice(0, 6).map((u) => <Avatar key={u.name} imageUrl={u.imageUrl} name={u.name} size={24} />)}
+            </div>
+            <p className="text-[12px] text-green-700 font-semibold">{onlineUsers.length}명 접속 중</p>
           </div>
         )}
+      </div>
+
+      <div className="px-4 py-4 space-y-4">
+
+        {/* 퀵 액세스 */}
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { href: "/gathering", emoji: "🚨", label: "집합" },
+            { href: "/board",     emoji: "📋", label: "게시판" },
+            { href: "/gathering?tab=today", emoji: "☀️", label: "오늘" },
+            { href: "/notice",    emoji: "📌", label: "공지" },
+          ].map((item) => (
+            <Link key={item.href} href={item.href}
+              className="bg-white rounded-2xl shadow-sm flex flex-col items-center justify-center py-3.5 gap-1 active:bg-gray-50">
+              <span className="text-[22px]">{item.emoji}</span>
+              <span className="text-[12px] font-semibold text-gray-600">{item.label}</span>
+            </Link>
+          ))}
+        </div>
+
+        {/* 진행률 카드 */}
+        {todos.length > 0 && (
+          <div className="bg-blue-600 rounded-2xl p-4 text-white">
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="text-[14px] font-semibold opacity-90">오늘 할 일</span>
+              <span className="text-[13px] opacity-80">{completedCount}/{todos.length} 완료</span>
+            </div>
+            <div className="w-full bg-blue-500/50 rounded-full h-2 mb-2">
+              <div className="progress-bar bg-white rounded-full h-2 transition-all"
+                style={{ "--progress": todos.length ? `${(completedCount / todos.length) * 100}%` : "0%" } as React.CSSProperties} />
+            </div>
+            <p className="text-[12px] opacity-75">
+              {todos.length - completedCount === 0 ? "모두 완료했어요 🎉" : `${todos.length - completedCount}개 남았어요`}
+            </p>
+          </div>
+        )}
+
+        {/* 생일 알림 (7일 이내) */}
+        {nearBirthdays.length > 0 && (
+          <div className="bg-pink-50 border border-pink-100 rounded-2xl p-4">
+            <p className="text-[12px] font-bold text-pink-500 mb-2">🎂 곧 생일이에요!</p>
+            <div className="space-y-2">
+              {nearBirthdays.map((b) => (
+                <div key={b.name} className="flex items-center gap-2.5">
+                  <Avatar imageUrl={b.imageUrl} name={b.name} size={32} />
+                  <div className="flex-1">
+                    <p className="text-[14px] font-semibold text-gray-800">{b.name}</p>
+                    <p className="text-[12px] text-pink-400">{b.month}월 {b.day}일 · {b.days === 0 ? "🎉 오늘!" : `D-${b.days}`}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 최신 공지 */}
+        {topNotice && (
+          <Link href="/notice" className="block bg-white rounded-2xl shadow-sm p-4">
+            <div className="flex items-start gap-2">
+              {topNotice.important && <Pin size={14} className="text-orange-400 flex-shrink-0 mt-0.5" />}
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest mb-1">최신 공지</p>
+                <p className="text-[15px] font-bold text-gray-900 truncate">{topNotice.title}</p>
+                {topNotice.content && <p className="text-[13px] text-gray-500 mt-0.5 truncate">{topNotice.content}</p>}
+              </div>
+              <ChevronRight size={16} className="text-gray-300 flex-shrink-0 mt-1" />
+            </div>
+          </Link>
+        )}
+
+        {/* 할 일 목록 */}
+        <div className="bg-white rounded-2xl shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-[14px] font-bold text-gray-800">📋 오늘 할 일</h2>
+            <Link href="/todos" className="text-[12px] text-blue-500 font-semibold flex items-center gap-0.5">
+              전체보기 <ChevronRight size={13} />
+            </Link>
+          </div>
+          {pendingTodos.length === 0 ? (
+            <div className="text-center py-4">
+              <CheckCircle2 size={28} className="mx-auto text-green-400 mb-2" />
+              <p className="text-[13px] text-gray-400">모든 할 일을 완료했어요!</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {pendingTodos.slice(0, 5).map((todo) => (
+                <button key={todo.id} type="button" onClick={() => toggle(todo.id)}
+                  aria-label={`${todo.title} 완료 처리`}
+                  className="w-full flex items-center gap-3 text-left rounded-xl p-2 -mx-2 hover:bg-gray-50 transition-colors">
+                  <Circle size={18} className="text-gray-200 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] text-gray-800 truncate">{todo.title}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={`text-[11px] px-1.5 py-0.5 rounded-full priority-badge-${todo.priority}`}>
+                        {CATEGORY_LABEL[todo.category]}
+                      </span>
+                      {todo.dueDate && <span className="text-[11px] text-gray-400">{todo.dueDate}</span>}
+                    </div>
+                  </div>
+                  {todo.priority === "high" && <AlertTriangle size={14} className="text-red-400 flex-shrink-0" />}
+                </button>
+              ))}
+              {pendingTodos.length > 5 && (
+                <Link href="/todos" className="block text-center text-[12px] text-blue-500 pt-1 font-semibold">
+                  +{pendingTodos.length - 5}개 더 있어요
+                </Link>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 주식 위젯 */}
+        <div className="bg-white rounded-2xl shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-[14px] font-bold text-gray-800">📈 주요 주식</h2>
+            <Link href="/stocks" className="text-[12px] text-blue-500 font-semibold flex items-center gap-0.5">
+              전체보기 <ChevronRight size={13} />
+            </Link>
+          </div>
+          {stockLoading ? (
+            <div className="flex items-center justify-center py-4">
+              <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : stocks.length === 0 ? (
+            <p className="text-[13px] text-gray-400 text-center py-2">데이터를 불러올 수 없어요</p>
+          ) : (
+            <div className="space-y-1">
+              {stocks.slice(0, 4).map((s) => {
+                const up = s.change > 0; const down = s.change < 0;
+                const Icon = up ? TrendingUp : down ? TrendingDown : Minus;
+                const cls = up ? "up" : down ? "down" : "flat";
+                return (
+                  <div key={s.symbol} className="flex items-center justify-between py-1.5">
+                    <p className="text-[14px] text-gray-800 font-medium">{s.name}</p>
+                    <div className="text-right">
+                      <span className={`text-[14px] font-semibold ${cls}`}>{s.price.toLocaleString()}</span>
+                      <div className={`flex items-center justify-end gap-0.5 text-[12px] ${cls}`}>
+                        <Icon size={10} /><span>{up ? "+" : ""}{s.changePercent.toFixed(2)}%</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 팀 바로가기 */}
+        <div className="grid grid-cols-2 gap-2">
+          <Link href="/gathering" className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 active:bg-gray-50">
+            <Users size={20} className="text-red-500" />
+            <div>
+              <p className="text-[14px] font-semibold text-gray-800">집합</p>
+              <p className="text-[12px] text-gray-400">팀 채팅 · 현황</p>
+            </div>
+          </Link>
+          <Link href="/board" className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 active:bg-gray-50">
+            <MessageSquare size={20} className="text-blue-500" />
+            <div>
+              <p className="text-[14px] font-semibold text-gray-800">게시판</p>
+              <p className="text-[12px] text-gray-400">자유 소통</p>
+            </div>
+          </Link>
+        </div>
+
       </div>
     </div>
   );

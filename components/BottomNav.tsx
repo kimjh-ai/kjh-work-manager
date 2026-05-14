@@ -9,8 +9,8 @@ const navItems = [
   { href: "/",          icon: LayoutDashboard, label: "홈" },
   { href: "/gathering", icon: Users,           label: "집합" },
   { href: "/board",     icon: MessageSquare,   label: "게시판" },
-  { href: "/more",      icon: MoreHorizontal,  label: "더보기" },
   { href: "/stocks",    icon: TrendingUp,      label: "주식" },
+  { href: "/more",      icon: MoreHorizontal,  label: "더보기" },
 ];
 
 export default function BottomNav() {
