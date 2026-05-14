@@ -226,6 +226,7 @@ export default function GatheringPage() {
   const [pendingStatus, setPendingStatus] = useState<Status | null>(null);
   const [reason, setReason] = useState("");
   const [renotifying, setRenotifying] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<{ name: string; imageUrl: string | null }[]>([]);
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const myName = user?.firstName ?? user?.username ?? email.split("@")[0];
@@ -240,10 +241,19 @@ export default function GatheringPage() {
     finally { setLoading(false); }
   };
 
+  const loadOnline = async () => {
+    try {
+      const res = await fetch("/api/online");
+      const data = await res.json();
+      setOnlineUsers(data.users ?? []);
+    } catch { /* no-op */ }
+  };
+
   useEffect(() => {
-    if (isLoaded) load();
+    if (isLoaded) { load(); loadOnline(); }
     const interval = setInterval(load, 5000);
-    return () => clearInterval(interval);
+    const onlineInterval = setInterval(loadOnline, 30_000);
+    return () => { clearInterval(interval); clearInterval(onlineInterval); };
   }, [isLoaded]);
 
   useEffect(() => {
@@ -347,6 +357,24 @@ export default function GatheringPage() {
         <>
           {notifStatus==="unknown" && <button type="button" onClick={enableNotif} className="w-full flex items-center justify-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-xl px-4 py-2.5 text-sm font-medium mb-4"><BellRing size={15}/> 집합 알림 받기 (탭해서 켜기)</button>}
           {notifStatus==="denied" && <div className="w-full flex items-center gap-2 bg-gray-50 border border-gray-200 text-gray-500 rounded-xl px-4 py-2.5 text-sm mb-4"><BellOff size={15}/> 알림 차단됨 — 브라우저 설정에서 허용해야 해요</div>}
+
+          {/* 온라인 접속자 */}
+          {onlineUsers.length > 0 && (
+            <div className="flex items-center gap-2 bg-white rounded-2xl shadow-sm px-4 py-3 mb-4">
+              <span className="relative flex h-2 w-2 mr-1">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              </span>
+              <div className="flex -space-x-1.5">
+                {onlineUsers.slice(0, 8).map((u) => (
+                  <Avatar key={u.name} imageUrl={u.imageUrl} name={u.name} size={26} />
+                ))}
+              </div>
+              <p className="text-[12px] text-gray-500 ml-1">
+                현재 <span className="font-semibold text-gray-800">{onlineUsers.length}명</span> 접속 중
+              </p>
+            </div>
+          )}
 
           {/* 헤더 */}
           <div className="flex items-center justify-between mb-4">

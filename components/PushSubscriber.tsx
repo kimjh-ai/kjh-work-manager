@@ -66,9 +66,10 @@ export default function PushSubscriber() {
   useEffect(() => {
     if (!isLoaded || !user) return;
 
-    // 최신 프로필 사진 Redis에 저장 (게시판 소급 적용용)
     const name = user.firstName ?? user.username ?? user.primaryEmailAddress?.emailAddress?.split("@")[0] ?? "";
     const imageUrl = user.imageUrl ?? null;
+
+    // 최신 프로필 사진 Redis에 저장 (게시판 소급 적용용)
     if (name && imageUrl) {
       fetch("/api/profiles", {
         method: "POST",
@@ -81,6 +82,19 @@ export default function PushSubscriber() {
     if (Notification.permission === "granted") {
       registerPush().catch(() => {});
     }
+
+    // 온라인 하트비트 — 30초마다 lastSeen 갱신
+    const ping = () => {
+      if (!name) return;
+      fetch("/api/online", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, imageUrl }),
+      }).catch(() => {});
+    };
+    ping();
+    const timer = setInterval(ping, 30_000);
+    return () => clearInterval(timer);
   }, [isLoaded, user]);
 
   return null;
