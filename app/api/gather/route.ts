@@ -6,6 +6,7 @@ export const runtime = "nodejs";
 
 const KEY = "gather:current";
 const SUB_KEY = "push:subscriptions";
+const HISTORY_KEY = "gather:history";
 
 async function sendPush(title: string, body: string) {
   const vKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -79,8 +80,9 @@ export async function POST(req: NextRequest) {
   }
 
   // 신규 집합 발령
+  const callId = Date.now().toString();
   const call = {
-    id: Date.now().toString(),
+    id: callId,
     location: body.location,
     message: body.message ?? "",
     calledBy: body.calledBy,
@@ -88,6 +90,14 @@ export async function POST(req: NextRequest) {
     checkins: [],
   };
   await redis.set(KEY, JSON.stringify(call));
+
+  // 히스토리 기록
+  try {
+    const hRaw = await redis.get(HISTORY_KEY);
+    const history = hRaw ? JSON.parse(hRaw) : [];
+    history.unshift({ id: callId, location: body.location, message: body.message ?? "", calledBy: body.calledBy, calledAt: call.calledAt, checkins: [] });
+    await redis.set(HISTORY_KEY, JSON.stringify(history.slice(0, 500)));
+  } catch { /* no-op */ }
 
   try {
     const locationEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
@@ -102,6 +112,18 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE() {
+  // 히스토리에 최종 체크인 결과 저장
+  try {
+    const raw = await redis.get(KEY);
+    if (raw) {
+      const current = JSON.parse(raw);
+      const hRaw = await redis.get(HISTORY_KEY);
+      const history = hRaw ? JSON.parse(hRaw) : [];
+      const idx = history.findIndex((h: { id: string }) => h.id === current.id);
+      if (idx !== -1) history[idx] = { ...history[idx], checkins: current.checkins };
+      await redis.set(HISTORY_KEY, JSON.stringify(history));
+    }
+  } catch { /* no-op */ }
   await redis.del(KEY);
   return NextResponse.json({ ok: true });
 }

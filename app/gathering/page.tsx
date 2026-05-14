@@ -14,8 +14,24 @@ import PraiseCard from "@/components/today/PraiseCard";
 
 type Location = "3층" | "옥상" | "편의점";
 type Status = "going" | "waiting" | "cant";
-type PageTab = "gather" | "today" | "games";
+type PageTab = "gather" | "today" | "games" | "chat";
 type GameTab = "ladder" | "random" | "oddeven";
+
+interface ChatMessage {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  text: string;
+  createdAt: string;
+}
+interface GatherLog {
+  id: string;
+  location: string;
+  message: string;
+  calledBy: string;
+  calledAt: string;
+  checkins: (string | Checkin)[];
+}
 
 interface Checkin {
   name: string;
@@ -227,6 +243,12 @@ export default function GatheringPage() {
   const [reason, setReason] = useState("");
   const [renotifying, setRenotifying] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<{ name: string; imageUrl: string | null }[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatText, setChatText] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [gatherLogs, setGatherLogs] = useState<GatherLog[]>([]);
+  const [gatherStats, setGatherStats] = useState({ day: 0, week: 0, month: 0 });
+  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const myName = user?.firstName ?? user?.username ?? email.split("@")[0];
@@ -249,12 +271,42 @@ export default function GatheringPage() {
     } catch { /* no-op */ }
   };
 
+  const loadChat = async () => {
+    try {
+      const res = await fetch("/api/gather-chat");
+      const data = await res.json();
+      setChatMessages(data.messages ?? []);
+    } catch { /* no-op */ }
+  };
+
+  const loadHistory = async () => {
+    try {
+      const res = await fetch("/api/gather-history");
+      const data = await res.json();
+      setGatherLogs(data.history ?? []);
+      setGatherStats(data.stats ?? { day: 0, week: 0, month: 0 });
+    } catch { /* no-op */ }
+  };
+
   useEffect(() => {
-    if (isLoaded) { load(); loadOnline(); }
+    if (isLoaded) { load(); loadOnline(); loadHistory(); }
     const interval = setInterval(load, 5000);
     const onlineInterval = setInterval(loadOnline, 30_000);
     return () => { clearInterval(interval); clearInterval(onlineInterval); };
   }, [isLoaded]);
+
+  // 채팅탭 전환 시 로드 + 3초 폴링
+  useEffect(() => {
+    if (pageTab !== "chat") return;
+    loadChat();
+    const chatInterval = setInterval(loadChat, 3000);
+    return () => clearInterval(chatInterval);
+  }, [pageTab]);
+
+  // 새 메시지 오면 자동 스크롤
+  useEffect(() => {
+    if (pageTab === "chat") chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, pageTab]);
 
   useEffect(() => {
     if (!("Notification" in window)) { setNotifStatus("unsupported"); return; }
@@ -262,6 +314,21 @@ export default function GatheringPage() {
   }, []);
 
   const enableNotif = async () => setNotifStatus(await registerPush());
+
+  const sendChat = async () => {
+    if (!chatText.trim() || chatSending) return;
+    setChatSending(true);
+    const text = chatText.trim();
+    setChatText("");
+    try {
+      await fetch("/api/gather-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: myName, imageUrl: myImage, text }),
+      });
+      await loadChat();
+    } finally { setChatSending(false); }
+  };
 
   const callGather = async () => {
     if (saving) return;
@@ -313,6 +380,7 @@ export default function GatheringPage() {
           ["gather", "🚨 집합"],
           ["today",  "☀️ 오늘"],
           ["games",  "🎮 게임"],
+          ["chat",   "💬 채팅"],
         ] as [PageTab, string][]).map(([key, label]) => (
           <button key={key} type="button" onClick={() => setPageTab(key)}
             className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -322,6 +390,57 @@ export default function GatheringPage() {
           </button>
         ))}
       </div>
+
+      {/* ── 채팅 탭 ── */}
+      {pageTab === "chat" && (
+        <div className="flex flex-col h-[calc(100vh-220px)]">
+          {/* 메시지 목록 */}
+          <div className="flex-1 overflow-y-auto space-y-2 pb-2">
+            {chatMessages.length === 0 && (
+              <div className="text-center py-16">
+                <p className="text-3xl mb-2">💬</p>
+                <p className="text-[14px] text-gray-400">아직 메시지가 없어요</p>
+                <p className="text-[12px] text-gray-300 mt-1">첫 메시지를 남겨보세요</p>
+              </div>
+            )}
+            {chatMessages.map((msg) => {
+              const isMine = msg.name === myName;
+              return (
+                <div key={msg.id} className={`flex items-end gap-2 ${isMine ? "flex-row-reverse" : "flex-row"}`}>
+                  {!isMine && <Avatar imageUrl={msg.imageUrl} name={msg.name} size={32} />}
+                  <div className={`max-w-[70%] ${isMine ? "items-end" : "items-start"} flex flex-col gap-0.5`}>
+                    {!isMine && <p className="text-[11px] text-gray-400 px-1">{msg.name}</p>}
+                    <div className={`px-3.5 py-2.5 rounded-2xl text-[14px] leading-relaxed ${
+                      isMine
+                        ? "bg-blue-500 text-white rounded-br-sm"
+                        : "bg-white shadow-sm text-gray-800 rounded-bl-sm"
+                    }`}>
+                      {msg.text}
+                    </div>
+                    <p className="text-[10px] text-gray-300 px-1">{format(new Date(msg.createdAt), "HH:mm")}</p>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={chatBottomRef} />
+          </div>
+          {/* 입력창 */}
+          <div className="flex items-center gap-2 pt-2 border-t border-gray-100 bg-[#f8f9fa]">
+            <input
+              value={chatText}
+              onChange={(e) => setChatText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+              placeholder="메시지 입력..."
+              className="flex-1 bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <button type="button" onClick={sendChat} disabled={chatSending || !chatText.trim()}
+              aria-label="전송"
+              className="w-10 h-10 bg-blue-500 text-white rounded-2xl flex items-center justify-center flex-shrink-0 disabled:opacity-40">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── 오늘 탭 ── */}
       {pageTab === "today" && (
@@ -423,9 +542,49 @@ export default function GatheringPage() {
           )}
 
           {!call && !showForm && (
-            <div className="card text-center py-12">
+            <div className="card text-center py-8 mb-4">
               <div className="text-5xl mb-3">😴</div>
               <p className="text-gray-500 text-sm">현재 집합 없음</p>
+            </div>
+          )}
+
+          {/* 집합 발령 통계 */}
+          <div className="bg-white rounded-2xl shadow-sm px-4 py-3 mb-4">
+            <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase mb-3">발령 통계</p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[["오늘", gatherStats.day], ["이번 주", gatherStats.week], ["이번 달", gatherStats.month]].map(([label, count]) => (
+                <div key={String(label)} className="bg-gray-50 rounded-xl py-2.5">
+                  <p className="text-[22px] font-black text-gray-800">{count}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 최근 발령 기록 */}
+          {gatherLogs.length > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase px-4 pt-3 pb-2">최근 기록</p>
+              {gatherLogs.slice(0, 10).map((log, idx) => {
+                const locEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
+                const going = (log.checkins ?? []).map(normalizeCheckin).filter(c => c.status === "going").length;
+                const cant  = (log.checkins ?? []).map(normalizeCheckin).filter(c => c.status === "cant").length;
+                return (
+                  <div key={log.id} className={`flex items-center gap-3 px-4 py-3 ${idx < Math.min(gatherLogs.length, 10) - 1 ? "border-b border-gray-50" : ""}`}>
+                    <span className="text-xl flex-shrink-0">{locEmoji[log.location] ?? "📍"}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-[14px] font-semibold text-gray-800">{log.location}</p>
+                        {log.message && <p className="text-[12px] text-gray-400 truncate">"{log.message}"</p>}
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        {format(new Date(log.calledAt), "M/d HH:mm")} · {log.calledBy}
+                        {log.checkins.length > 0 && ` · ✅${going} ❌${cant}`}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
