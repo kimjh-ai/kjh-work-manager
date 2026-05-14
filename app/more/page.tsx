@@ -8,6 +8,7 @@ import {
   AlertTriangle, DollarSign, Calendar,
   Download, ChevronRight, CheckSquare, FileText,
   LogOut, User, Bell, BellOff, ChevronDown,
+  Briefcase, CalendarDays, Calculator,
 } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import { registerPush, unregisterPush } from "@/components/PushSubscriber";
@@ -202,6 +203,33 @@ export default function MorePage() {
                     )}
                     <ChevronRight size={16} className="text-gray-300" />
                   </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* ── 이직 준비 ── */}
+        <section>
+          <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase px-1 mb-2">이직 준비 🤫</p>
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            {[
+              { href: "/interviews", icon: Briefcase,    label: "면접 일정",    desc: "회사별 전형·결과 기록",      color: "text-blue-500",    bg: "bg-blue-50" },
+              { href: "/dday",       icon: CalendarDays, label: "D-day",        desc: "퇴사일·면접일 카운트다운",   color: "text-purple-500",  bg: "bg-purple-50" },
+              { href: "/severance",  icon: Calculator,   label: "퇴직금 계산기", desc: "입사일+월급 → 예상 퇴직금", color: "text-emerald-500", bg: "bg-emerald-50" },
+            ].map((item, idx, arr) => {
+              const Icon = item.icon;
+              return (
+                <Link key={item.href} href={item.href}
+                  className={`flex items-center gap-4 px-4 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors ${idx < arr.length - 1 ? "border-b border-gray-50" : ""}`}>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${item.bg} flex-shrink-0`}>
+                    <Icon size={19} className={item.color} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[15px] font-semibold text-gray-900">{item.label}</p>
+                    <p className="text-[12px] text-gray-400 mt-0.5">{item.desc}</p>
+                  </div>
+                  <ChevronRight size={16} className="text-gray-300" />
                 </Link>
               );
             })}
