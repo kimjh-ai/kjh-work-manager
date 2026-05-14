@@ -3,7 +3,6 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { koKR } from "@clerk/localizations";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
-import InitSampleData from "@/components/InitSampleData";
 import PushSubscriber from "@/components/PushSubscriber";
 
 export const metadata: Metadata = {
@@ -35,7 +34,6 @@ export default function RootLayout({
     <ClerkProvider localization={koKR}>
       <html lang="ko" className="h-full">
         <body className="h-full antialiased app-bg">
-          <InitSampleData />
           <PushSubscriber />
           <main className="max-w-lg mx-auto pb-20 min-h-screen">
             {children}
