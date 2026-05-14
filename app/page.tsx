@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { getTodos, saveTodos } from "@/lib/storage";
 import { Todo } from "@/lib/types";
-import { isAdmin } from "@/lib/auth";
 
 interface StockData {
   symbol: string;
@@ -50,12 +49,9 @@ export default function Dashboard() {
   const [stockLoading, setStockLoading] = useState(true);
   const today = format(new Date(), "yyyy년 M월 d일 (EEE)", { locale: ko });
 
-  // 일반 유저는 주식 페이지로 리다이렉트
+  // 로그인 안 된 경우만 리다이렉트
   useEffect(() => {
-    if (!isLoaded) return;
-    if (user && !isAdmin(user.primaryEmailAddress?.emailAddress)) {
-      router.replace("/stocks");
-    }
+    if (isLoaded && !user) router.replace("/sign-in");
   }, [isLoaded, user, router]);
 
   useEffect(() => {

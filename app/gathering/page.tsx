@@ -222,6 +222,7 @@ export default function GatheringPage() {
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [notifStatus, setNotifStatus] = useState<"unknown"|"granted"|"denied"|"unsupported">("unknown");
+  const [isChanging, setIsChanging] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<Status | null>(null);
   const [reason, setReason] = useState("");
   const [renotifying, setRenotifying] = useState(false);
@@ -278,7 +279,7 @@ export default function GatheringPage() {
     setSaving(true);
     try {
       await fetch("/api/gather", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "checkin", name: myName, imageUrl: myImage, status, reason: r ?? "" }) });
-      setPendingStatus(null); setReason(""); await load();
+      setPendingStatus(null); setReason(""); setIsChanging(false); await load();
     } finally { setSaving(false); }
   };
 
@@ -419,39 +420,48 @@ export default function GatheringPage() {
               {/* 내 응답 */}
               <div className="card mb-4">
                 <p className="text-xs font-semibold text-gray-500 mb-3">내 응답</p>
-                {myCheckin && pendingStatus === null ? (
+
+                {/* 현재 응답 표시 */}
+                {myCheckin && !isChanging && pendingStatus === null && (
                   <div className={`flex items-center justify-between rounded-xl px-4 py-3 border ${STATUS_CONFIG[myCheckin.status].light}`}>
                     <span className="text-sm font-semibold">{STATUS_CONFIG[myCheckin.status].emoji} {STATUS_CONFIG[myCheckin.status].label}</span>
-                    <button type="button"
-                      onClick={() => { setReason(myCheckin.reason ?? ""); setPendingStatus(myCheckin.status); }}
-                      className="text-xs underline opacity-70">변경</button>
+                    <button type="button" onClick={() => setIsChanging(true)}
+                      className="text-xs text-gray-500 border border-gray-200 rounded-lg px-2.5 py-1 hover:bg-gray-50">변경</button>
                   </div>
-                ) : pendingStatus === null ? (
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["going","waiting","cant"] as Status[]).map(s=>(
-                      <button key={s} type="button"
-                        onClick={() => s==="going" ? submitCheckin("going") : setPendingStatus(s)}
-                        className={`py-2.5 rounded-xl text-xs font-semibold ${STATUS_CONFIG[s].color}`}>
-                        {STATUS_CONFIG[s].emoji}<br/>{STATUS_CONFIG[s].label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
+                )}
 
+                {/* 상태 선택 버튼 (초기 or 변경 모드) */}
+                {(!myCheckin || isChanging) && pendingStatus === null && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["going","waiting","cant"] as Status[]).map(s=>(
+                        <button key={s} type="button"
+                          onClick={() => s==="going" ? submitCheckin("going") : setPendingStatus(s)}
+                          className={`py-3 rounded-xl text-xs font-semibold ${STATUS_CONFIG[s].color}`}>
+                          {STATUS_CONFIG[s].emoji}<br/>{STATUS_CONFIG[s].label}
+                        </button>
+                      ))}
+                    </div>
+                    {isChanging && (
+                      <button type="button" onClick={() => setIsChanging(false)}
+                        className="w-full py-2 rounded-xl text-sm bg-gray-100 text-gray-600">취소</button>
+                    )}
+                  </div>
+                )}
+
+                {/* 사유 입력 */}
                 {pendingStatus !== null && (
                   <div className="space-y-2">
-                    {pendingStatus !== "going" && (
-                      <input type="text" placeholder="사유 입력 (선택)" value={reason} onChange={e=>setReason(e.target.value)}
-                        onKeyDown={e=>{ if(e.key==="Enter") submitCheckin(pendingStatus,reason); }}
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
-                    )}
+                    <input type="text" placeholder="사유 입력 (선택)" value={reason} onChange={e=>setReason(e.target.value)}
+                      onKeyDown={e=>{ if(e.key==="Enter") submitCheckin(pendingStatus,reason); }}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"/>
                     <div className="flex gap-2">
                       <button type="button" onClick={()=>submitCheckin(pendingStatus,reason)} disabled={saving}
-                        className={`flex-1 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 ${pendingStatus==="going"?"bg-green-500":pendingStatus==="waiting"?"bg-yellow-400":"bg-red-400"}`}>
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 ${pendingStatus==="waiting"?"bg-yellow-400":"bg-red-400"}`}>
                         {STATUS_CONFIG[pendingStatus].emoji} {STATUS_CONFIG[pendingStatus].label}
                       </button>
-                      <button type="button" onClick={()=>{setPendingStatus(null);setReason("");}}
-                        className="flex-1 py-2 rounded-xl text-sm bg-gray-100 text-gray-600">취소</button>
+                      <button type="button" onClick={()=>{setPendingStatus(null);setReason("");setIsChanging(false);}}
+                        className="flex-1 py-2.5 rounded-xl text-sm bg-gray-100 text-gray-600">취소</button>
                     </div>
                   </div>
                 )}

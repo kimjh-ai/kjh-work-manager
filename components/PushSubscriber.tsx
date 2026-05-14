@@ -18,6 +18,21 @@ async function saveSubscription(sub: PushSubscription) {
   });
 }
 
+export async function unregisterPush(): Promise<void> {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      await fetch("/api/push", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      });
+      await sub.unsubscribe();
+    }
+  } catch { /* no-op */ }
+}
+
 export async function registerPush(): Promise<"granted" | "denied" | "unsupported"> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return "unsupported";
 
