@@ -27,7 +27,14 @@ interface SearchResult {
   market: string;
 }
 
-type Tab = "popular" | "search" | "watch";
+type Tab = "popular" | "search" | "watch" | "coin";
+
+interface CoinData {
+  symbol: string;
+  name: string;
+  price: number;
+  changePercent: number;
+}
 
 function StockRow({
   stock,
@@ -99,6 +106,9 @@ export default function StocksPage() {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState("");
+  const [coins, setCoins] = useState<CoinData[]>([]);
+  const [coinLoading, setCoinLoading] = useState(false);
+  const [coinUpdatedAt, setCoinUpdatedAt] = useState("");
 
   // 검색
   const [query, setQuery] = useState("");
@@ -193,8 +203,24 @@ export default function StocksPage() {
     }
   };
 
+  const loadCoins = useCallback(async () => {
+    setCoinLoading(true);
+    try {
+      const res = await fetch("/api/coins");
+      const data = await res.json();
+      setCoins(data.coins ?? []);
+      if (data.updatedAt) setCoinUpdatedAt(format(new Date(data.updatedAt), "HH:mm:ss"));
+    } catch { /* no-op */ }
+    finally { setCoinLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "coin" && coins.length === 0) loadCoins();
+  }, [tab, coins.length, loadCoins]);
+
   const TABS: { key: Tab; label: string }[] = [
     { key: "popular", label: "📊 인기" },
+    { key: "coin",    label: "🪙 코인" },
     { key: "search",  label: "🔍 검색" },
     { key: "watch",   label: `⭐ 관심(${watchlist.length})` },
   ];
@@ -242,6 +268,65 @@ export default function StocksPage() {
                 <StockRow key={s.symbol} stock={s} watchlist={watchlist} onToggleWatch={toggleWatch} />
               ))}
               <p className="text-xs text-gray-400 text-center mt-3">★ 터치 → 관심종목 추가</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── 코인 탭 ── */}
+      {tab === "coin" && (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[12px] text-gray-400">코인게코 기준 · KRW · 24h 변동</p>
+            <button type="button" onClick={loadCoins} aria-label="새로고침"
+              className={`text-gray-400 hover:text-blue-500 transition-colors ${coinLoading ? "animate-spin" : ""}`}>
+              <RefreshCw size={15} />
+            </button>
+          </div>
+          {coinLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-8 h-8 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : coins.length === 0 ? (
+            <div className="card text-center py-10 text-gray-400">
+              <p className="text-sm">데이터를 불러올 수 없어요</p>
+            </div>
+          ) : (
+            <div className="card">
+              {coins.map((coin, idx) => {
+                const up = coin.changePercent > 0;
+                const down = coin.changePercent < 0;
+                const cls = up ? "up" : down ? "down" : "flat";
+                const Icon = up ? TrendingUp : down ? TrendingDown : Minus;
+                return (
+                  <div key={coin.symbol} className={`flex items-center justify-between py-3 ${idx < coins.length - 1 ? "border-b border-gray-50" : ""}`}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-yellow-50 flex items-center justify-center text-[16px] font-black text-yellow-600 flex-shrink-0">
+                        {coin.symbol.slice(0, 1)}
+                      </div>
+                      <div>
+                        <p className="text-[15px] font-semibold text-gray-800">{coin.name}</p>
+                        <p className="text-[12px] text-gray-400">{coin.symbol}</p>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className={`text-[15px] font-semibold ${cls}`}>
+                        {coin.price >= 1_000_000
+                          ? `${(coin.price / 1_000_000).toFixed(2)}백만`
+                          : coin.price >= 1000
+                          ? `${coin.price.toLocaleString()}`
+                          : coin.price.toFixed(2)}
+                        <span className="text-[12px] font-normal ml-0.5">원</span>
+                      </p>
+                      <div className={`flex items-center justify-end gap-0.5 text-[12px] ${cls}`}>
+                        <Icon size={11} />
+                        <span>{up ? "+" : ""}{coin.changePercent.toFixed(2)}%</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {coinUpdatedAt && <p className="text-[11px] text-gray-400 text-center mt-3 pt-3 border-t border-gray-50">{coinUpdatedAt} 기준</p>}
             </div>
           )}
         </>

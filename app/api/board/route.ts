@@ -64,6 +64,18 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
+export async function PATCH(req: NextRequest) {
+  const { id, name } = await req.json();
+  const raw = await redis.get(KEY);
+  const posts = raw ? JSON.parse(raw) : [];
+  const idx = posts.findIndex((p: { id: string }) => p.id === id);
+  if (idx === -1) return NextResponse.json({ ok: false }, { status: 404 });
+  const likes: string[] = posts[idx].likes ?? [];
+  posts[idx].likes = likes.includes(name) ? likes.filter((l: string) => l !== name) : [...likes, name];
+  await redis.set(KEY, JSON.stringify(posts));
+  return NextResponse.json({ ok: true, likes: posts[idx].likes });
+}
+
 export async function DELETE(req: NextRequest) {
   const id = new URL(req.url).searchParams.get("id") ?? "";
   const raw = await redis.get(KEY);

@@ -14,7 +14,7 @@ import PraiseCard from "@/components/today/PraiseCard";
 
 type Location = "3층" | "옥상" | "편의점";
 type Status = "going" | "waiting" | "cant";
-type PageTab = "gather" | "today" | "games" | "chat";
+type PageTab = "gather" | "today" | "games";
 type GameTab = "ladder" | "random" | "oddeven";
 
 interface ChatMessage {
@@ -289,24 +289,16 @@ export default function GatheringPage() {
   };
 
   useEffect(() => {
-    if (isLoaded) { load(); loadOnline(); loadHistory(); }
-    const interval = setInterval(load, 5000);
+    if (isLoaded) { load(); loadOnline(); loadHistory(); loadChat(); }
+    const interval = setInterval(() => { load(); loadChat(); }, 5000);
     const onlineInterval = setInterval(loadOnline, 30_000);
     return () => { clearInterval(interval); clearInterval(onlineInterval); };
   }, [isLoaded]);
 
-  // 채팅탭 전환 시 로드 + 3초 폴링
+  // 새 메시지 오면 채팅 영역 자동 스크롤
   useEffect(() => {
-    if (pageTab !== "chat") return;
-    loadChat();
-    const chatInterval = setInterval(loadChat, 3000);
-    return () => clearInterval(chatInterval);
-  }, [pageTab]);
-
-  // 새 메시지 오면 자동 스크롤
-  useEffect(() => {
-    if (pageTab === "chat") chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages, pageTab]);
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
 
   useEffect(() => {
     if (!("Notification" in window)) { setNotifStatus("unsupported"); return; }
@@ -380,7 +372,6 @@ export default function GatheringPage() {
           ["gather", "🚨 집합"],
           ["today",  "☀️ 오늘"],
           ["games",  "🎮 게임"],
-          ["chat",   "💬 채팅"],
         ] as [PageTab, string][]).map(([key, label]) => (
           <button key={key} type="button" onClick={() => setPageTab(key)}
             className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -390,57 +381,6 @@ export default function GatheringPage() {
           </button>
         ))}
       </div>
-
-      {/* ── 채팅 탭 ── */}
-      {pageTab === "chat" && (
-        <div className="flex flex-col h-[calc(100vh-220px)]">
-          {/* 메시지 목록 */}
-          <div className="flex-1 overflow-y-auto space-y-2 pb-2">
-            {chatMessages.length === 0 && (
-              <div className="text-center py-16">
-                <p className="text-3xl mb-2">💬</p>
-                <p className="text-[14px] text-gray-400">아직 메시지가 없어요</p>
-                <p className="text-[12px] text-gray-300 mt-1">첫 메시지를 남겨보세요</p>
-              </div>
-            )}
-            {chatMessages.map((msg) => {
-              const isMine = msg.name === myName;
-              return (
-                <div key={msg.id} className={`flex items-end gap-2 ${isMine ? "flex-row-reverse" : "flex-row"}`}>
-                  {!isMine && <Avatar imageUrl={msg.imageUrl} name={msg.name} size={32} />}
-                  <div className={`max-w-[70%] ${isMine ? "items-end" : "items-start"} flex flex-col gap-0.5`}>
-                    {!isMine && <p className="text-[11px] text-gray-400 px-1">{msg.name}</p>}
-                    <div className={`px-3.5 py-2.5 rounded-2xl text-[14px] leading-relaxed ${
-                      isMine
-                        ? "bg-blue-500 text-white rounded-br-sm"
-                        : "bg-white shadow-sm text-gray-800 rounded-bl-sm"
-                    }`}>
-                      {msg.text}
-                    </div>
-                    <p className="text-[10px] text-gray-300 px-1">{format(new Date(msg.createdAt), "HH:mm")}</p>
-                  </div>
-                </div>
-              );
-            })}
-            <div ref={chatBottomRef} />
-          </div>
-          {/* 입력창 */}
-          <div className="flex items-center gap-2 pt-2 border-t border-gray-100 bg-[#f8f9fa]">
-            <input
-              value={chatText}
-              onChange={(e) => setChatText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
-              placeholder="메시지 입력..."
-              className="flex-1 bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400"
-            />
-            <button type="button" onClick={sendChat} disabled={chatSending || !chatText.trim()}
-              aria-label="전송"
-              className="w-10 h-10 bg-blue-500 text-white rounded-2xl flex items-center justify-center flex-shrink-0 disabled:opacity-40">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ── 오늘 탭 ── */}
       {pageTab === "today" && (
@@ -677,6 +617,54 @@ export default function GatheringPage() {
               </div>
             </>
           )}
+
+          {/* 팀 채팅 위젯 */}
+          <div className="mt-4">
+            <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase px-1 mb-2">💬 팀 채팅</p>
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <div className="h-60 overflow-y-auto p-3 space-y-3">
+                {chatMessages.length === 0 && (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <p className="text-2xl mb-1">💬</p>
+                    <p className="text-[13px] text-gray-400">첫 메시지를 남겨보세요</p>
+                  </div>
+                )}
+                {chatMessages.map((msg) => {
+                  const isMine = msg.name === myName;
+                  return (
+                    <div key={msg.id} className={`flex items-end gap-2 ${isMine ? "flex-row-reverse" : "flex-row"}`}>
+                      {!isMine && <Avatar imageUrl={msg.imageUrl} name={msg.name} size={28} />}
+                      <div className={`max-w-[72%] flex flex-col gap-0.5 ${isMine ? "items-end" : "items-start"}`}>
+                        {!isMine && <p className="text-[11px] text-gray-400 px-1">{msg.name}</p>}
+                        <div className={`px-3 py-2 rounded-2xl text-[14px] leading-relaxed ${
+                          isMine ? "bg-blue-500 text-white rounded-br-sm" : "bg-gray-100 text-gray-800 rounded-bl-sm"
+                        }`}>
+                          {msg.text}
+                        </div>
+                        <p className="text-[10px] text-gray-300 px-1">{format(new Date(msg.createdAt), "HH:mm")}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={chatBottomRef} />
+              </div>
+              <div className="border-t border-gray-100 flex items-center gap-2 px-3 py-2.5">
+                <Avatar imageUrl={myImage} name={myName} size={28} />
+                <input
+                  value={chatText}
+                  onChange={(e) => setChatText(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                  placeholder="메시지 입력..."
+                  className="flex-1 bg-gray-100 rounded-2xl px-3.5 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+                <button type="button" onClick={sendChat} disabled={chatSending || !chatText.trim()}
+                  aria-label="전송" title="전송"
+                  className="w-9 h-9 bg-blue-500 text-white rounded-2xl flex items-center justify-center flex-shrink-0 disabled:opacity-40">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
         </>
       )}
     </div>
