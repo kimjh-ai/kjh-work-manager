@@ -9,7 +9,13 @@ export const metadata: Metadata = {
   title: "Work Manager",
   description: "생산품질팀 업무 관리 앱",
   manifest: "/manifest.json",
-  icons: { apple: "/icon-192.png" },
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "32x32" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
