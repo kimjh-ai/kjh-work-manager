@@ -1,34 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import redis from "@/lib/redis";
-import webpush from "web-push";
+import { sendPush } from "@/lib/sendPush";
 
 export const runtime = "nodejs";
 
 const KEY = "board:posts";
-const SUB_KEY = "push:subscriptions";
-
-async function sendPush(title: string, body: string) {
-  const vKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  const vPriv = process.env.VAPID_PRIVATE_KEY;
-  const vEmail = process.env.VAPID_EMAIL;
-  if (!vKey || !vPriv || !vEmail) return;
-
-  webpush.setVapidDetails(vEmail, vKey, vPriv);
-  const subRaw = await redis.get(SUB_KEY);
-  const subs: webpush.PushSubscription[] = subRaw ? JSON.parse(subRaw) : [];
-  const payload = JSON.stringify({ title, body });
-
-  const results = await Promise.allSettled(
-    subs.map((sub) => webpush.sendNotification(sub, payload))
-  );
-  const validSubs = subs.filter((_, i) => {
-    const r = results[i];
-    return !(r.status === "rejected" && (r.reason as { statusCode?: number })?.statusCode === 410);
-  });
-  if (validSubs.length !== subs.length) {
-    await redis.set(SUB_KEY, JSON.stringify(validSubs));
-  }
-}
 
 export async function GET() {
   try {
@@ -57,7 +33,8 @@ export async function POST(req: NextRequest) {
     const preview = content?.trim() ? content.trim().slice(0, 40) : "";
     await sendPush(
       `📋 ${author}님이 글을 올렸어요`,
-      preview ? `${title} — ${preview}` : title
+      preview ? `${title} — ${preview}` : title,
+      "board"
     );
   } catch { /* no-op */ }
 

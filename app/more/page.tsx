@@ -13,8 +13,16 @@ import {
 } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import { registerPush, unregisterPush } from "@/components/PushSubscriber";
+import type { NotifType, NotifPrefs } from "@/lib/sendPush";
 
 type NotifStatus = "granted" | "denied" | "unsupported" | "unknown";
+
+const NOTIF_TYPES: { type: NotifType; label: string; desc: string }[] = [
+  { type: "gather",  label: "집합 발령",  desc: "집합·재알림 알림" },
+  { type: "checkin", label: "체크인 응답", desc: "팀원 응답 알림" },
+  { type: "chat",    label: "채팅",       desc: "집합 채팅 메시지" },
+  { type: "board",   label: "게시판",     desc: "새 글 등록 알림" },
+];
 
 /* 그리드 아이템 (2열) */
 const TEAM_GRID = [
@@ -76,6 +84,9 @@ export default function MorePage() {
   const [mounted, setMounted] = useState(false);
   const [notifStatus, setNotifStatus] = useState<NotifStatus>("unknown");
   const [notifLoading, setNotifLoading] = useState(false);
+  const [pushEndpoint, setPushEndpoint] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState<NotifPrefs>({ gather: true, checkin: true, chat: true, board: true });
+  const [prefLoading, setPrefLoading] = useState<NotifType | null>(null);
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const admin = isAdmin(email);
@@ -96,19 +107,61 @@ export default function MorePage() {
     setMounted(true);
 
     if (!("Notification" in window)) { setNotifStatus("unsupported"); return; }
-    setNotifStatus(
-      Notification.permission === "granted" ? "granted" :
-      Notification.permission === "denied"  ? "denied"  : "unknown"
-    );
+    const perm = Notification.permission;
+    setNotifStatus(perm === "granted" ? "granted" : perm === "denied" ? "denied" : "unknown");
+
+    if (perm === "granted" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.ready.then(async (reg) => {
+        const sub = await reg.pushManager.getSubscription();
+        if (!sub) return;
+        const ep = sub.endpoint;
+        setPushEndpoint(ep);
+        try {
+          const res = await fetch(`/api/notif-prefs?endpoint=${encodeURIComponent(ep)}`);
+          const data = await res.json();
+          setPrefs(data.prefs);
+        } catch { /* no-op */ }
+      });
+    }
   }, []);
 
   const toggleNotif = async () => {
     if (notifLoading || notifStatus === "denied" || notifStatus === "unsupported") return;
     setNotifLoading(true);
     try {
-      if (notifStatus === "granted") { await unregisterPush(); setNotifStatus("unknown"); }
-      else { const r = await registerPush(); setNotifStatus(r); }
+      if (notifStatus === "granted") {
+        await unregisterPush();
+        setNotifStatus("unknown");
+        setPushEndpoint(null);
+      } else {
+        const r = await registerPush();
+        setNotifStatus(r);
+        if (r === "granted" && "serviceWorker" in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            setPushEndpoint(sub.endpoint);
+            const res = await fetch(`/api/notif-prefs?endpoint=${encodeURIComponent(sub.endpoint)}`);
+            const data = await res.json();
+            setPrefs(data.prefs);
+          }
+        }
+      }
     } finally { setNotifLoading(false); }
+  };
+
+  const togglePref = async (type: NotifType) => {
+    if (!pushEndpoint || prefLoading) return;
+    setPrefLoading(type);
+    const newVal = !prefs[type];
+    try {
+      await fetch("/api/notif-prefs", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ endpoint: pushEndpoint, type, value: newVal }),
+      });
+      setPrefs((p) => ({ ...p, [type]: newVal }));
+    } finally { setPrefLoading(null); }
   };
 
   const handleExport = () => {
@@ -191,16 +244,16 @@ export default function MorePage() {
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
             <button type="button" onClick={toggleNotif}
               disabled={notifLoading || notifStatus === "denied" || notifStatus === "unsupported"}
-              className="w-full flex items-center gap-4 px-4 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left disabled:cursor-default border-b border-gray-50">
+              className="w-full flex items-center gap-4 px-4 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left disabled:cursor-default border-b border-gray-100">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${notifStatus === "granted" ? "bg-blue-500" : "bg-gray-100"}`}>
                 {notifStatus === "granted" ? <Bell size={20} className="text-white" /> : <BellOff size={20} className="text-gray-400" />}
               </div>
               <div className="flex-1">
-                <p className="text-[15px] font-semibold text-gray-900">알림</p>
+                <p className="text-[15px] font-semibold text-gray-900">푸시 알림</p>
                 <p className="text-[12px] text-gray-400 mt-0.5">
                   {notifStatus === "denied"      ? "브라우저 설정에서 알림 허용 필요" :
                    notifStatus === "unsupported" ? "홈 화면 추가 후 사용 가능" :
-                   notifStatus === "granted"     ? "집합·게시판·투표 알림 켜짐" :
+                   notifStatus === "granted"     ? "알림 켜짐 · 항목별 설정 가능" :
                    "탭해서 알림 켜기"}
                 </p>
               </div>
@@ -208,6 +261,28 @@ export default function MorePage() {
                 {notifLoading ? "..." : notifBadge.label}
               </span>
             </button>
+
+            {/* 항목별 알림 토글 (알림 ON일 때만 표시) */}
+            {notifStatus === "granted" && pushEndpoint && NOTIF_TYPES.map(({ type, label, desc }, i) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => togglePref(type)}
+                disabled={prefLoading === type}
+                className={`w-full flex items-center gap-4 px-4 py-3.5 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left ${i < NOTIF_TYPES.length - 1 ? "border-b border-gray-50" : ""}`}
+              >
+                <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center flex-shrink-0">
+                  <Bell size={16} className={prefs[type] ? "text-blue-500" : "text-gray-300"} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-[14px] font-semibold text-gray-800">{label}</p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">{desc}</p>
+                </div>
+                <div className={`w-11 h-6 rounded-full relative transition-colors flex-shrink-0 ${prefs[type] ? "bg-blue-500" : "bg-gray-200"}`}>
+                  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${prefs[type] ? "left-5" : "left-0.5"}`} />
+                </div>
+              </button>
+            ))}
             <button type="button" onClick={handleExport}
               className="w-full flex items-center gap-4 px-4 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left">
               <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">

@@ -1,35 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import redis from "@/lib/redis";
-import webpush from "web-push";
+import { sendPush } from "@/lib/sendPush";
 
 export const runtime = "nodejs";
 
 const KEY = "gather:current";
-const SUB_KEY = "push:subscriptions";
 const HISTORY_KEY = "gather:history";
-
-async function sendPush(title: string, body: string) {
-  const vKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  const vPriv = process.env.VAPID_PRIVATE_KEY;
-  const vEmail = process.env.VAPID_EMAIL;
-  if (!vKey || !vPriv || !vEmail) return;
-
-  webpush.setVapidDetails(vEmail, vKey, vPriv);
-  const subRaw = await redis.get(SUB_KEY);
-  const subs: webpush.PushSubscription[] = subRaw ? JSON.parse(subRaw) : [];
-  const payload = JSON.stringify({ title, body });
-
-  const results = await Promise.allSettled(
-    subs.map((sub) => webpush.sendNotification(sub, payload))
-  );
-  const validSubs = subs.filter((_, i) => {
-    const r = results[i];
-    return !(r.status === "rejected" && (r.reason as { statusCode?: number })?.statusCode === 410);
-  });
-  if (validSubs.length !== subs.length) {
-    await redis.set(SUB_KEY, JSON.stringify(validSubs));
-  }
-}
 
 export async function GET() {
   try {
@@ -64,7 +40,7 @@ export async function POST(req: NextRequest) {
       const statusLabel: Record<string, string> = { going: "나갈게요 ✅", waiting: "기다려주세요 ⏳", cant: "못나가요 ❌" };
       const label = statusLabel[body.status] ?? body.status;
       const notifBody = body.reason ? `${label} — "${body.reason}"` : label;
-      await sendPush(`🚨 ${body.name}님 응답`, notifBody);
+      await sendPush(`🚨 ${body.name}님 응답`, notifBody, "checkin");
     } catch { /* no-op */ }
     return NextResponse.json({ ok: true });
   }
@@ -79,7 +55,8 @@ export async function POST(req: NextRequest) {
       const emoji = locationEmoji[call.location] ?? "📍";
       await sendPush(
         `🔔 집합 재알림! ${emoji} ${call.location}`,
-        `아직 응답 안 하신 분들 확인해주세요! - ${call.calledBy}`
+        `아직 응답 안 하신 분들 확인해주세요! - ${call.calledBy}`,
+        "gather"
       );
     } catch { /* no-op */ }
     return NextResponse.json({ ok: true });
@@ -110,7 +87,8 @@ export async function POST(req: NextRequest) {
     const emoji = locationEmoji[body.location] ?? "📍";
     await sendPush(
       `🚨 집합! ${emoji} ${body.location}`,
-      body.message ? `"${body.message}" - ${body.calledBy}` : `${body.calledBy}님이 집합을 발령했습니다`
+      body.message ? `"${body.message}" - ${body.calledBy}` : `${body.calledBy}님이 집합을 발령했습니다`,
+      "gather"
     );
   } catch { /* no-op */ }
 
