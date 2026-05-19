@@ -59,6 +59,12 @@ export async function POST(req: NextRequest) {
         reason: body.reason ?? "",
       });
       await redis.set(KEY, JSON.stringify(call));
+
+      // 체크인 알림
+      const statusLabel: Record<string, string> = { going: "나갈게요 ✅", waiting: "기다려주세요 ⏳", cant: "못나가요 ❌" };
+      const label = statusLabel[body.status] ?? body.status;
+      const notifBody = body.reason ? `${label} — "${body.reason}"` : label;
+      await sendPush(`🚨 ${body.name}님 응답`, notifBody);
     } catch { /* no-op */ }
     return NextResponse.json({ ok: true });
   }
