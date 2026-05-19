@@ -254,13 +254,12 @@ export default function GatheringPage() {
   const myName = user?.firstName ?? user?.username ?? email.split("@")[0];
   const myImage = user?.imageUrl ?? null;
 
-  const load = async () => {
+  const loadChat = async (callId: string) => {
     try {
-      const res = await fetch("/api/gather");
+      const res = await fetch(`/api/gather-chat?callId=${encodeURIComponent(callId)}`);
       const data = await res.json();
-      setCall(data.call ?? null);
+      setChatMessages(data.messages ?? []);
     } catch { /* no-op */ }
-    finally { setLoading(false); }
   };
 
   const loadOnline = async () => {
@@ -268,14 +267,6 @@ export default function GatheringPage() {
       const res = await fetch("/api/online");
       const data = await res.json();
       setOnlineUsers(data.users ?? []);
-    } catch { /* no-op */ }
-  };
-
-  const loadChat = async () => {
-    try {
-      const res = await fetch("/api/gather-chat");
-      const data = await res.json();
-      setChatMessages(data.messages ?? []);
     } catch { /* no-op */ }
   };
 
@@ -288,9 +279,22 @@ export default function GatheringPage() {
     } catch { /* no-op */ }
   };
 
+  const poll = async (initial = false) => {
+    try {
+      const res = await fetch("/api/gather");
+      const data = await res.json();
+      const newCall: GatherCall | null = data.call ?? null;
+      setCall(newCall);
+      if (initial) setLoading(false);
+      if (newCall) await loadChat(newCall.id);
+      else setChatMessages([]);
+    } catch { if (initial) setLoading(false); }
+  };
+
   useEffect(() => {
-    if (isLoaded) { load(); loadOnline(); loadHistory(); loadChat(); }
-    const interval = setInterval(() => { load(); loadChat(); }, 5000);
+    if (!isLoaded) return;
+    poll(true); loadOnline(); loadHistory();
+    const interval = setInterval(() => poll(), 5000);
     const onlineInterval = setInterval(loadOnline, 30_000);
     return () => { clearInterval(interval); clearInterval(onlineInterval); };
   }, [isLoaded]);
@@ -308,7 +312,7 @@ export default function GatheringPage() {
   const enableNotif = async () => setNotifStatus(await registerPush());
 
   const sendChat = async () => {
-    if (!chatText.trim() || chatSending) return;
+    if (!chatText.trim() || chatSending || !call) return;
     setChatSending(true);
     const text = chatText.trim();
     setChatText("");
@@ -316,9 +320,9 @@ export default function GatheringPage() {
       await fetch("/api/gather-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: myName, imageUrl: myImage, text }),
+        body: JSON.stringify({ callId: call.id, name: myName, imageUrl: myImage, text }),
       });
-      await loadChat();
+      await loadChat(call.id);
     } finally { setChatSending(false); }
   };
 
@@ -327,14 +331,14 @@ export default function GatheringPage() {
     setSaving(true);
     try {
       await fetch("/api/gather", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: selectedLoc, message, calledBy: myName }) });
-      setShowForm(false); setMessage(""); await load();
+      setShowForm(false); setMessage(""); await poll();
     } finally { setSaving(false); }
   };
 
   const cancelGather = async () => {
     if (!confirm("집합 해제할까요?")) return;
     await fetch("/api/gather", { method: "DELETE" });
-    await load();
+    await poll();
   };
 
   const renotify = async () => {
@@ -348,7 +352,7 @@ export default function GatheringPage() {
     setSaving(true);
     try {
       await fetch("/api/gather", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "checkin", name: myName, imageUrl: myImage, status, reason: r ?? "" }) });
-      setPendingStatus(null); setReason(""); setIsChanging(false); await load();
+      setPendingStatus(null); setReason(""); setIsChanging(false); await poll();
     } finally { setSaving(false); }
   };
 
@@ -615,56 +619,56 @@ export default function GatheringPage() {
                   </div>
                 ))}
               </div>
+
+              {/* 이번 집합 채팅 */}
+              <div className="mt-4">
+                <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase px-1 mb-2">💬 이번 집합 채팅</p>
+                <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                  <div className="h-64 overflow-y-auto p-3 space-y-3">
+                    {chatMessages.length === 0 && (
+                      <div className="flex flex-col items-center justify-center h-full text-center">
+                        <p className="text-2xl mb-1">💬</p>
+                        <p className="text-[13px] text-gray-400">이번 집합 채팅을 시작해보세요</p>
+                      </div>
+                    )}
+                    {chatMessages.map((msg) => {
+                      const isMine = msg.name === myName;
+                      return (
+                        <div key={msg.id} className={`flex items-end gap-2 ${isMine ? "flex-row-reverse" : "flex-row"}`}>
+                          {!isMine && <Avatar imageUrl={msg.imageUrl} name={msg.name} size={28} />}
+                          <div className={`max-w-[72%] flex flex-col gap-0.5 ${isMine ? "items-end" : "items-start"}`}>
+                            {!isMine && <p className="text-[11px] text-gray-400 px-1">{msg.name}</p>}
+                            <div className={`px-3 py-2 rounded-2xl text-[14px] leading-relaxed ${
+                              isMine ? "bg-blue-500 text-white rounded-br-sm" : "bg-gray-100 text-gray-800 rounded-bl-sm"
+                            }`}>
+                              {msg.text}
+                            </div>
+                            <p className="text-[10px] text-gray-300 px-1">{format(new Date(msg.createdAt), "HH:mm")}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div ref={chatBottomRef} />
+                  </div>
+                  <div className="border-t border-gray-100 flex items-center gap-2 px-3 py-2.5">
+                    <Avatar imageUrl={myImage} name={myName} size={28} />
+                    <input
+                      value={chatText}
+                      onChange={(e) => setChatText(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                      placeholder="메시지 입력..."
+                      className="flex-1 bg-gray-100 rounded-2xl px-3.5 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                    <button type="button" onClick={sendChat} disabled={chatSending || !chatText.trim()}
+                      aria-label="전송" title="전송"
+                      className="w-9 h-9 bg-blue-500 text-white rounded-2xl flex items-center justify-center flex-shrink-0 disabled:opacity-40">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </>
           )}
-
-          {/* 팀 채팅 위젯 */}
-          <div className="mt-4">
-            <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase px-1 mb-2">💬 팀 채팅</p>
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              <div className="h-60 overflow-y-auto p-3 space-y-3">
-                {chatMessages.length === 0 && (
-                  <div className="flex flex-col items-center justify-center h-full text-center">
-                    <p className="text-2xl mb-1">💬</p>
-                    <p className="text-[13px] text-gray-400">첫 메시지를 남겨보세요</p>
-                  </div>
-                )}
-                {chatMessages.map((msg) => {
-                  const isMine = msg.name === myName;
-                  return (
-                    <div key={msg.id} className={`flex items-end gap-2 ${isMine ? "flex-row-reverse" : "flex-row"}`}>
-                      {!isMine && <Avatar imageUrl={msg.imageUrl} name={msg.name} size={28} />}
-                      <div className={`max-w-[72%] flex flex-col gap-0.5 ${isMine ? "items-end" : "items-start"}`}>
-                        {!isMine && <p className="text-[11px] text-gray-400 px-1">{msg.name}</p>}
-                        <div className={`px-3 py-2 rounded-2xl text-[14px] leading-relaxed ${
-                          isMine ? "bg-blue-500 text-white rounded-br-sm" : "bg-gray-100 text-gray-800 rounded-bl-sm"
-                        }`}>
-                          {msg.text}
-                        </div>
-                        <p className="text-[10px] text-gray-300 px-1">{format(new Date(msg.createdAt), "HH:mm")}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-                <div ref={chatBottomRef} />
-              </div>
-              <div className="border-t border-gray-100 flex items-center gap-2 px-3 py-2.5">
-                <Avatar imageUrl={myImage} name={myName} size={28} />
-                <input
-                  value={chatText}
-                  onChange={(e) => setChatText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
-                  placeholder="메시지 입력..."
-                  className="flex-1 bg-gray-100 rounded-2xl px-3.5 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-                <button type="button" onClick={sendChat} disabled={chatSending || !chatText.trim()}
-                  aria-label="전송" title="전송"
-                  className="w-9 h-9 bg-blue-500 text-white rounded-2xl flex items-center justify-center flex-shrink-0 disabled:opacity-40">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
-                </button>
-              </div>
-            </div>
-          </div>
         </>
       )}
     </div>

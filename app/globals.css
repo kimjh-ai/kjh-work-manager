@@ -42,6 +42,9 @@ body {
 /* 진행률 바 (CSS 변수로 동적 너비) */
 .progress-bar { width: var(--progress, 0%); }
 
+/* 게시판 팀채팅 패널 높이 */
+.chat-panel-height { height: calc(100vh - 140px); }
+
 /* 우선순위 배지 */
 .priority-badge-high   { background: #ef4444; color: white; }
 .priority-badge-medium { background: #f59e0b; color: white; }
