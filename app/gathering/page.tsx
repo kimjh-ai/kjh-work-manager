@@ -248,7 +248,7 @@ export default function GatheringPage() {
   const [chatSending, setChatSending] = useState(false);
   const [gatherLogs, setGatherLogs] = useState<GatherLog[]>([]);
   const [gatherStats, setGatherStats] = useState({ day: 0, week: 0, month: 0 });
-  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const myName = user?.firstName ?? user?.username ?? email.split("@")[0];
@@ -299,9 +299,12 @@ export default function GatheringPage() {
     return () => { clearInterval(interval); clearInterval(onlineInterval); };
   }, [isLoaded]);
 
-  // 새 메시지 오면 채팅 영역 자동 스크롤
+  // 채팅 컨테이너 안에서만 스크롤 (이미 맨 아래 있을 때만)
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = chatContainerRef.current;
+    if (!el) return;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (isNearBottom) el.scrollTop = el.scrollHeight;
   }, [chatMessages]);
 
   useEffect(() => {
@@ -323,6 +326,9 @@ export default function GatheringPage() {
         body: JSON.stringify({ callId: call.id, name: myName, imageUrl: myImage, text }),
       });
       await loadChat(call.id);
+      // 내가 보낸 메시지는 항상 맨 아래로
+      const el = chatContainerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
     } finally { setChatSending(false); }
   };
 
@@ -624,7 +630,7 @@ export default function GatheringPage() {
               <div className="mt-4">
                 <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase px-1 mb-2">💬 이번 집합 채팅</p>
                 <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-                  <div className="h-64 overflow-y-auto p-3 space-y-3">
+                  <div ref={chatContainerRef} className="h-64 overflow-y-auto p-3 space-y-3">
                     {chatMessages.length === 0 && (
                       <div className="flex flex-col items-center justify-center h-full text-center">
                         <p className="text-2xl mb-1">💬</p>
@@ -648,7 +654,6 @@ export default function GatheringPage() {
                         </div>
                       );
                     })}
-                    <div ref={chatBottomRef} />
                   </div>
                   <div className="border-t border-gray-100 flex items-center gap-2 px-3 py-2.5">
                     <Avatar imageUrl={myImage} name={myName} size={28} />
