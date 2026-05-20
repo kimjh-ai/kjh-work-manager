@@ -20,6 +20,58 @@ interface OnlineUser { name: string; imageUrl: string | null }
 interface Notice { id: string; title: string; content: string; author: string; important: boolean; createdAt: string }
 interface Birthday { name: string; month: number; day: number; imageUrl: string | null }
 
+interface WeatherCurrent {
+  temperature_2m: number;
+  relative_humidity_2m: number;
+  weather_code: number;
+  wind_speed_10m: number;
+  apparent_temperature: number;
+}
+interface WeatherDaily {
+  time: string[];
+  weather_code: number[];
+  temperature_2m_max: number[];
+  temperature_2m_min: number[];
+  precipitation_probability_max: number[];
+}
+interface WeatherData { current: WeatherCurrent; daily: WeatherDaily }
+
+const CITIES = [
+  { id: "seoul",   name: "서울",  lat: "37.5665", lon: "126.9780" },
+  { id: "busan",   name: "부산",  lat: "35.1796", lon: "129.0756" },
+  { id: "incheon", name: "인천",  lat: "37.4563", lon: "126.7052" },
+  { id: "daegu",   name: "대구",  lat: "35.8714", lon: "128.6014" },
+  { id: "daejeon", name: "대전",  lat: "36.3504", lon: "127.3845" },
+  { id: "gwangju", name: "광주",  lat: "35.1595", lon: "126.8526" },
+  { id: "suwon",   name: "수원",  lat: "37.2636", lon: "127.0286" },
+  { id: "jeju",    name: "제주",  lat: "33.4996", lon: "126.5312" },
+];
+
+function wmoEmoji(code: number): string {
+  if (code === 0) return "☀️";
+  if (code <= 2)  return "🌤️";
+  if (code === 3) return "☁️";
+  if (code <= 48) return "🌫️";
+  if (code <= 55) return "🌦️";
+  if (code <= 67) return "🌧️";
+  if (code <= 77) return "🌨️";
+  if (code <= 82) return "🌧️";
+  if (code <= 99) return "⛈️";
+  return "🌡️";
+}
+function wmoLabel(code: number): string {
+  if (code === 0) return "맑음";
+  if (code <= 2)  return "대체로 맑음";
+  if (code === 3) return "흐림";
+  if (code <= 48) return "안개";
+  if (code <= 55) return "이슬비";
+  if (code <= 67) return "비";
+  if (code <= 77) return "눈";
+  if (code <= 82) return "소나기";
+  if (code <= 99) return "뇌우";
+  return "";
+}
+
 const CATEGORY_LABEL: Record<string, string> = {
   quality: "품질", deadline: "마감", document: "문서", meeting: "회의",
   expense: "경비", material: "부자재", general: "일반",
@@ -52,6 +104,8 @@ export default function Dashboard() {
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [birthdays, setBirthdays] = useState<Birthday[]>([]);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [cityId, setCityId] = useState("seoul");
 
   const today = format(new Date(), "M월 d일 (EEE)", { locale: ko });
   const myName = user?.firstName ?? user?.username ?? user?.primaryEmailAddress?.emailAddress?.split("@")[0] ?? "";
@@ -70,16 +124,23 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!isLoaded || !user) return;
-    // 주식
     fetch("/api/stocks?symbols=005930,000660,034020,373220,005380")
       .then((r) => r.json()).then((d) => setStocks(d.stocks ?? [])).catch(() => {}).finally(() => setStockLoading(false));
-    // 온라인 유저
     fetch("/api/online").then((r) => r.json()).then((d) => setOnlineUsers(d.users ?? [])).catch(() => {});
-    // 공지
     fetch("/api/notice").then((r) => r.json()).then((d) => setNotices(d.notices ?? [])).catch(() => {});
-    // 생일
     fetch("/api/birthday").then((r) => r.json()).then((d) => setBirthdays(d.birthdays ?? [])).catch(() => {});
+    // localStorage에서 마지막 선택 도시 복원
+    const saved = localStorage.getItem("weather_city");
+    if (saved && CITIES.find((c) => c.id === saved)) setCityId(saved);
   }, [isLoaded, user]);
+
+  useEffect(() => {
+    const c = CITIES.find((c) => c.id === cityId) ?? CITIES[0];
+    fetch(`/api/weather?lat=${c.lat}&lon=${c.lon}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.current) setWeather(d); })
+      .catch(() => {});
+  }, [cityId]);
 
   const toggle = (id: string) => {
     const updated = todos.map((t) => t.id === id ? { ...t, completed: !t.completed, updatedAt: new Date().toISOString() } : t);
@@ -133,6 +194,65 @@ export default function Dashboard() {
       </div>
 
       <div className="px-4 py-4 space-y-4">
+
+        {/* 날씨 카드 */}
+        {weather ? (
+          <div className="bg-gradient-to-br from-sky-400 to-blue-600 rounded-2xl p-4 text-white">
+            {/* 도시 선택 + 바람/습도 */}
+            <div className="flex items-center justify-between mb-3">
+              <select
+                value={cityId}
+                onChange={(e) => { setCityId(e.target.value); localStorage.setItem("weather_city", e.target.value); }}
+                aria-label="지역 선택" title="지역 선택"
+                className="bg-white/20 text-white text-[13px] font-bold rounded-xl px-3 py-1.5 outline-none appearance-none cursor-pointer"
+              >
+                {CITIES.map((c) => (
+                  <option key={c.id} value={c.id} className="text-gray-900 bg-white">{c.name}</option>
+                ))}
+              </select>
+              <div className="text-right text-[12px] opacity-80 space-y-0.5">
+                <p>💧 {weather.current.relative_humidity_2m}%</p>
+                <p>💨 {Math.round(weather.current.wind_speed_10m)}km/h</p>
+              </div>
+            </div>
+
+            {/* 현재 날씨 */}
+            <div className="flex items-center gap-4 mb-4">
+              <span className="text-[52px] leading-none">{wmoEmoji(weather.current.weather_code)}</span>
+              <div>
+                <p className="text-[46px] font-black leading-none">{Math.round(weather.current.temperature_2m)}°</p>
+                <p className="text-[13px] font-semibold opacity-90 mt-0.5">{wmoLabel(weather.current.weather_code)}</p>
+                <p className="text-[12px] opacity-70 mt-0.5">
+                  체감 {Math.round(weather.current.apparent_temperature)}° &nbsp;·&nbsp;
+                  최저 {Math.round(weather.daily.temperature_2m_min[0])}° / 최고 {Math.round(weather.daily.temperature_2m_max[0])}°
+                </p>
+              </div>
+            </div>
+
+            {/* 7일 예보 */}
+            <div className="flex gap-2 overflow-x-auto pb-0.5 scrollbar-hide">
+              {weather.daily.time.map((date, i) => {
+                const d = new Date(date);
+                const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
+                const label = i === 0 ? "오늘" : i === 1 ? "내일" : dayNames[d.getDay()];
+                const rain = weather.daily.precipitation_probability_max[i];
+                return (
+                  <div key={date} className="flex-shrink-0 flex flex-col items-center gap-1 bg-white/15 rounded-xl px-2.5 py-2 min-w-[46px]">
+                    <p className="text-[11px] font-bold opacity-90">{label}</p>
+                    <span className="text-[18px]">{wmoEmoji(weather.daily.weather_code[i])}</span>
+                    <p className="text-[12px] font-bold">{Math.round(weather.daily.temperature_2m_max[i])}°</p>
+                    <p className="text-[11px] opacity-65">{Math.round(weather.daily.temperature_2m_min[i])}°</p>
+                    {rain > 30 && <p className="text-[10px] opacity-80">💧{rain}%</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="bg-gradient-to-br from-sky-400 to-blue-600 rounded-2xl p-4 h-[170px] flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+          </div>
+        )}
 
         {/* 퀵 액세스 */}
         <div className="grid grid-cols-4 gap-2">
