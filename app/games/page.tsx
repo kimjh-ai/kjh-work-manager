@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Plus, X, Shuffle, RotateCcw } from "lucide-react";
+import { Plus, X, Shuffle, RotateCcw, ChevronLeft } from "lucide-react";
 
 type GameTab = "suika" | "reaction" | "mole" | "ladder" | "random" | "oddeven" | "ranking";
 
@@ -532,47 +532,73 @@ function OddEvenGame() {
 /* ─────────────────────────────────────────────
    메인
 ───────────────────────────────────────────── */
-const GAMES: { key: GameTab; emoji: string; label: string }[] = [
-  { key: "suika",    emoji: "🍉", label: "수박게임" },
-  { key: "reaction", emoji: "⚡", label: "반응속도" },
-  { key: "mole",     emoji: "🦔", label: "두더지" },
-  { key: "ladder",   emoji: "🪜", label: "사다리" },
-  { key: "random",   emoji: "🎯", label: "랜덤뽑기" },
-  { key: "oddeven",  emoji: "🎲", label: "홀짝" },
-  { key: "ranking",  emoji: "🏆", label: "랭킹" },
+const GAMES: { key: GameTab; emoji: string; label: string; desc: string; color: string }[] = [
+  { key: "suika",    emoji: "🍉", label: "수박게임",  desc: "과일 합쳐서 수박 만들기",  color: "from-green-400 to-emerald-500" },
+  { key: "reaction", emoji: "⚡", label: "반응속도",  desc: "빠를수록 최고!",           color: "from-yellow-400 to-orange-400" },
+  { key: "mole",     emoji: "🦔", label: "두더지잡기", desc: "30초 동안 최대한 잡아라",  color: "from-lime-400 to-green-500" },
+  { key: "ladder",   emoji: "🪜", label: "사다리",    desc: "운명을 사다리에 맡겨봐",   color: "from-purple-400 to-violet-500" },
+  { key: "random",   emoji: "🎯", label: "랜덤뽑기",  desc: "공정한 당번 결정 도우미",  color: "from-blue-400 to-indigo-500" },
+  { key: "oddeven",  emoji: "🎲", label: "홀짝",      desc: "홀? 짝? 찍어봐!",         color: "from-pink-400 to-rose-500" },
 ];
 
 export default function GamesPage() {
   const { user } = useUser();
-  const [tab, setTab] = useState<GameTab>("suika");
+  const [selected, setSelected] = useState<GameTab | null>(null);
   const myName = user?.firstName ?? user?.username ?? user?.primaryEmailAddress?.emailAddress?.split("@")[0] ?? "";
+
+  if (selected !== null) {
+    const game = [...GAMES, { key: "ranking" as GameTab, emoji: "🏆", label: "랭킹", desc: "", color: "" }].find(g => g.key === selected)!;
+    return (
+      <div className="px-4 pt-6 pb-4">
+        <div className="flex items-center gap-3 mb-5">
+          <button type="button" onClick={() => setSelected(null)}
+            aria-label="게임 목록으로" title="게임 목록으로"
+            className="w-9 h-9 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0 active:bg-gray-200">
+            <ChevronLeft size={20} className="text-gray-600" />
+          </button>
+          <h1 className="text-lg font-bold text-gray-900">{game.emoji} {game.label}</h1>
+        </div>
+        <div className="card">
+          {selected === "suika"    && <SuikaGame playerName={myName} />}
+          {selected === "reaction" && <ReactionGame playerName={myName} />}
+          {selected === "mole"     && <WhackAMole playerName={myName} />}
+          {selected === "ladder"   && <LadderGame />}
+          {selected === "random"   && <RandomPicker />}
+          {selected === "oddeven"  && <OddEvenGame />}
+          {selected === "ranking"  && <RankingBoard />}
+        </div>
+        <p className="text-xs text-gray-400 text-center mt-4">내기는 적당히 😄</p>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 pt-6 pb-4">
-      <h1 className="text-xl font-bold text-gray-900 mb-4">🎮 게임</h1>
+      <h1 className="text-xl font-bold text-gray-900 mb-5">🎮 게임</h1>
 
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
-        {GAMES.map(({ key, emoji, label }) => (
-          <button key={key} type="button" onClick={() => setTab(key)}
-            className={`flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors whitespace-nowrap ${
-              tab === key ? "bg-blue-500 text-white shadow-sm" : "bg-gray-100 text-gray-500"
-            }`}>
-            {emoji} {label}
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        {GAMES.map(({ key, emoji, label, desc, color }) => (
+          <button key={key} type="button" onClick={() => setSelected(key)}
+            className="bg-white rounded-2xl shadow-sm overflow-hidden active:scale-[0.97] transition-transform">
+            <div className={`bg-gradient-to-br ${color} p-5 flex items-center justify-center`}>
+              <span className="text-5xl">{emoji}</span>
+            </div>
+            <div className="px-3 py-2.5 text-left">
+              <p className="text-[14px] font-bold text-gray-900">{label}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5 leading-tight">{desc}</p>
+            </div>
           </button>
         ))}
       </div>
 
-      <div className="card">
-        {tab === "suika"    && <SuikaGame playerName={myName} />}
-        {tab === "reaction" && <ReactionGame playerName={myName} />}
-        {tab === "mole"     && <WhackAMole playerName={myName} />}
-        {tab === "ladder"   && <LadderGame />}
-        {tab === "random"   && <RandomPicker />}
-        {tab === "oddeven"  && <OddEvenGame />}
-        {tab === "ranking"  && <RankingBoard />}
-      </div>
-
-      <p className="text-xs text-gray-400 text-center mt-4">내기는 적당히 😄</p>
+      <button type="button" onClick={() => setSelected("ranking")}
+        className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 rounded-2xl p-4 flex items-center gap-4 active:opacity-90 transition-opacity shadow-sm">
+        <span className="text-5xl">🏆</span>
+        <div className="text-left">
+          <p className="text-[16px] font-bold text-white">랭킹</p>
+          <p className="text-[12px] text-yellow-100 mt-0.5">수박게임·두더지·반응속도 명예의 전당</p>
+        </div>
+      </button>
     </div>
   );
 }

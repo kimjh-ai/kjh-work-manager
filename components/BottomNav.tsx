@@ -3,14 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { LayoutDashboard, Gamepad2, Users, MessageSquare, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, Gamepad2, MessageSquare, MoreHorizontal } from "lucide-react";
 
 const navItems = [
-  { href: "/",          icon: LayoutDashboard, label: "홈" },
-  { href: "/gathering", icon: Users,           label: "집합" },
-  { href: "/games",     icon: Gamepad2,        label: "게임" },
-  { href: "/board",     icon: MessageSquare,   label: "게시판" },
-  { href: "/more",      icon: MoreHorizontal,  label: "더보기" },
+  { href: "/",      icon: LayoutDashboard, label: "홈" },
+  { href: "/games", icon: Gamepad2,        label: "게임" },
+  { href: "/board", icon: MessageSquare,   label: "게시판" },
+  { href: "/more",  icon: MoreHorizontal,  label: "더보기" },
 ];
 
 export default function BottomNav() {

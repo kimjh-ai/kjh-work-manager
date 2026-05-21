@@ -247,6 +247,10 @@ export default function Dashboard() {
                 );
               })}
             </div>
+            <Link href="/weather"
+              className="mt-3 flex items-center justify-center gap-1 bg-white/15 rounded-xl py-2 text-[12px] font-semibold opacity-90 active:bg-white/25">
+              상세 예보 전체보기 →
+            </Link>
           </div>
         ) : (
           <div className="bg-gradient-to-br from-sky-400 to-blue-600 rounded-2xl p-4 h-[170px] flex items-center justify-center">
