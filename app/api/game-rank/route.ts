@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import redis from "@/lib/redis";
 
-type GameType = "reaction" | "mole" | "2048";
+type GameType = "reaction" | "mole" | "suika";
 
 function key(game: GameType) { return `game_rank:${game}`; }
 
