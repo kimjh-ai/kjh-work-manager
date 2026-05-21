@@ -15,7 +15,7 @@ import PraiseCard from "@/components/today/PraiseCard";
 type Location = "3층" | "옥상" | "편의점";
 type Status = "going" | "waiting" | "cant";
 type PageTab = "gather" | "today" | "games";
-type GameTab = "ladder" | "random" | "oddeven" | "reaction" | "mole" | "2048";
+type GameTab = "ladder" | "random" | "oddeven" | "reaction" | "mole" | "2048" | "ranking";
 
 interface ChatMessage {
   id: string;
@@ -63,22 +63,31 @@ function normalizeCheckin(c: string | Checkin): Checkin {
 }
 
 /* ── 반응속도 ── */
-function ReactionGame() {
+function ReactionGame({ playerName }: { playerName: string }) {
   type Phase = "idle" | "waiting" | "go" | "result";
   const [phase, setPhase] = useState<Phase>("idle");
   const [ms, setMs] = useState<number | null>(null);
   const [tooEarly, setTooEarly] = useState(false);
+  const [newBest, setNewBest] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRef = useRef(0);
 
   const start = () => {
-    setPhase("waiting"); setMs(null); setTooEarly(false);
+    setPhase("waiting"); setMs(null); setTooEarly(false); setNewBest(false);
     timerRef.current = setTimeout(() => { setPhase("go"); startRef.current = Date.now(); }, 1500 + Math.random() * 3000);
   };
   const tap = () => {
     if (phase === "idle" || phase === "result") { start(); return; }
     if (phase === "waiting") { clearTimeout(timerRef.current!); setTooEarly(true); setPhase("idle"); return; }
-    if (phase === "go") { setMs(Date.now() - startRef.current); setPhase("result"); }
+    if (phase === "go") {
+      const elapsed = Date.now() - startRef.current;
+      setMs(elapsed); setPhase("result");
+      if (playerName) {
+        fetch("/api/game-rank", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ game: "reaction", name: playerName, score: elapsed }) })
+          .then(r => r.json()).then(d => { if (d.newBest) setNewBest(true); }).catch(() => {});
+      }
+    }
   };
   useEffect(() => () => clearTimeout(timerRef.current!), []);
 
@@ -98,6 +107,7 @@ function ReactionGame() {
           <>
             <p className="text-5xl font-black text-gray-800">{ms}<span className="text-2xl">ms</span></p>
             <p className="text-xl font-bold text-gray-600">{rating}</p>
+            {newBest && <p className="text-sm font-bold text-yellow-500">🏆 신기록!</p>}
             <p className="text-sm text-gray-400 mt-1">탭해서 다시하기</p>
           </>
         )}
@@ -108,12 +118,13 @@ function ReactionGame() {
 }
 
 /* ── 두더지 잡기 ── */
-function WhackAMole() {
+function WhackAMole({ playerName }: { playerName: string }) {
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
   const [moleIdx, setMoleIdx] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [best, setBest] = useState(0);
+  const [newBest, setNewBest] = useState(false);
   const moleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const scoreRef = useRef(0);
@@ -124,7 +135,7 @@ function WhackAMole() {
   };
 
   const start = () => {
-    scoreRef.current = 0; setScore(0); setTimeLeft(30); setPlaying(true);
+    scoreRef.current = 0; setScore(0); setTimeLeft(30); setPlaying(true); setNewBest(false);
     showMole(0);
     gameRef.current = setInterval(() => {
       setTimeLeft(t => {
@@ -132,6 +143,11 @@ function WhackAMole() {
           clearInterval(gameRef.current!); clearTimeout(moleRef.current!);
           setPlaying(false); setMoleIdx(null);
           setBest(b => Math.max(b, scoreRef.current));
+          if (playerName && scoreRef.current > 0) {
+            fetch("/api/game-rank", { method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ game: "mole", name: playerName, score: scoreRef.current }) })
+              .then(r => r.json()).then(d => { if (d.newBest) setNewBest(true); }).catch(() => {});
+          }
           return 0;
         }
         return t - 1;
@@ -165,6 +181,9 @@ function WhackAMole() {
           </button>
         ))}
       </div>
+      {!playing && timeLeft === 0 && newBest && (
+        <p className="text-yellow-500 font-bold text-center text-sm">🏆 신기록!</p>
+      )}
       {!playing && (
         <button type="button" onClick={start}
           className="w-full bg-green-500 text-white rounded-2xl py-3 text-lg font-bold">
@@ -219,13 +238,16 @@ function g2048Over(g: number[][]){
     if(r<3&&g[r][c]===g[r+1][c])return false;
   }return true;
 }
-function Game2048() {
+function Game2048({ playerName }: { playerName: string }) {
   const [grid, setGrid] = useState<number[][]>(g2048Init);
   const [score, setScore] = useState(0);
   const [best, setBest] = useState(0);
   const [over, setOver] = useState(false);
   const [won, setWon] = useState(false);
+  const [newBest, setNewBest] = useState(false);
   const ts = useRef({x:0,y:0});
+  const scoreRef = useRef(0);
+  const submittedRef = useRef(false);
 
   const move = useCallback((dir: "l"|"r"|"u"|"d") => {
     if(over) return;
@@ -233,7 +255,7 @@ function Game2048() {
       const[ng,delta]=g2048Move(g,dir);
       if(g2048Equal(g,ng)) return g;
       const fin=g2048Add(ng);
-      setScore(s=>{ const ns=s+delta; setBest(b=>Math.max(b,ns)); return ns; });
+      setScore(s=>{ const ns=s+delta; scoreRef.current=ns; setBest(b=>Math.max(b,ns)); return ns; });
       if(fin.some(r=>r.includes(2048))) setWon(true);
       if(g2048Over(fin)) setOver(true);
       return fin;
@@ -248,7 +270,16 @@ function Game2048() {
     window.addEventListener("keydown",h); return()=>window.removeEventListener("keydown",h);
   },[move]);
 
-  const restart=()=>{setGrid(g2048Init());setScore(0);setOver(false);setWon(false);};
+  useEffect(() => {
+    if ((over || won) && !submittedRef.current && playerName && scoreRef.current > 0) {
+      submittedRef.current = true;
+      fetch("/api/game-rank", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ game: "2048", name: playerName, score: scoreRef.current }) })
+        .then(r => r.json()).then(d => { if (d.newBest) setNewBest(true); }).catch(() => {});
+    }
+  }, [over, won, playerName]);
+
+  const restart=()=>{setGrid(g2048Init());setScore(0);setOver(false);setWon(false);setNewBest(false);submittedRef.current=false;scoreRef.current=0;};
 
   return (
     <div className="space-y-3">
@@ -266,6 +297,7 @@ function Game2048() {
       {(over||won)&&(
         <div className={`rounded-2xl p-3 text-center ${won?"bg-yellow-50 border-2 border-yellow-300":"bg-red-50 border-2 border-red-200"}`}>
           <p className="text-lg font-black">{won?"🎉 2048 달성!":"😭 게임 오버"}</p>
+          {newBest && <p className="text-sm font-bold text-yellow-500 mt-1">🏆 신기록!</p>}
           <button type="button" onClick={restart} className="mt-1 text-sm font-semibold text-blue-500">다시하기</button>
         </div>
       )}
@@ -286,6 +318,66 @@ function Game2048() {
         ))}
       </div>
       <p className="text-xs text-gray-400 text-center">스와이프 또는 방향키로 조작</p>
+    </div>
+  );
+}
+
+/* ── 랭킹 ── */
+function RankingBoard() {
+  type RankGame = "reaction" | "mole" | "2048";
+  const [tab, setTab] = useState<RankGame>("reaction");
+  const [ranks, setRanks] = useState<{ name: string; score: number }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/game-rank?game=${tab}`)
+      .then(r => r.json())
+      .then(d => { setRanks(d.ranks ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [tab]);
+
+  const GAME_INFO: Record<RankGame, { label: string; unit: string; emoji: string }> = {
+    reaction: { label: "반응속도", unit: "ms", emoji: "⚡" },
+    mole:     { label: "두더지", unit: "점", emoji: "🦔" },
+    "2048":   { label: "2048", unit: "점", emoji: "🎮" },
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        {(["reaction", "mole", "2048"] as RankGame[]).map(g => (
+          <button key={g} type="button" onClick={() => setTab(g)}
+            className={`flex-1 py-2 rounded-xl text-sm font-semibold transition-colors ${
+              tab === g ? "bg-yellow-400 text-white" : "bg-gray-100 text-gray-500"
+            }`}>
+            {GAME_INFO[g].emoji} {GAME_INFO[g].label}
+          </button>
+        ))}
+      </div>
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <div className="w-6 h-6 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"/>
+        </div>
+      ) : ranks.length === 0 ? (
+        <p className="text-center text-gray-400 text-sm py-8">아직 기록이 없어요 🎮<br/><span className="text-xs">게임을 플레이하면 순위가 등록돼요!</span></p>
+      ) : (
+        <div className="space-y-2">
+          {ranks.map(({ name, score }, i) => {
+            const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+            return (
+              <div key={name} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3">
+                <span className="text-lg w-6 text-center flex-shrink-0">{medal}</span>
+                <p className="flex-1 text-sm font-semibold text-gray-800">{name}</p>
+                <p className="text-sm font-bold text-blue-600">
+                  {score.toLocaleString()}{GAME_INFO[tab].unit}
+                </p>
+              </div>
+            );
+          })}
+          {tab === "reaction" && <p className="text-xs text-gray-400 text-center pt-1">낮을수록 빠름 ⚡</p>}
+        </div>
+      )}
     </div>
   );
 }
@@ -642,12 +734,13 @@ export default function GatheringPage() {
         <>
           <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
             {([
-              ["ladder",  "🪜 사다리"],
-              ["random",  "🎯 랜덤뽑기"],
-              ["oddeven", "🎲 홀짝"],
-              ["reaction","⚡ 반응속도"],
-              ["mole",    "🦔 두더지"],
-              ["2048",    "🎮 2048"],
+              ["ladder",   "🪜 사다리"],
+              ["random",   "🎯 랜덤뽑기"],
+              ["oddeven",  "🎲 홀짝"],
+              ["reaction", "⚡ 반응속도"],
+              ["mole",     "🦔 두더지"],
+              ["2048",     "🎮 2048"],
+              ["ranking",  "🏆 랭킹"],
             ] as [GameTab,string][]).map(([k,l])=>(
               <button key={k} type="button" onClick={()=>setGameTab(k)}
                 className={`flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors whitespace-nowrap ${
@@ -659,9 +752,10 @@ export default function GatheringPage() {
             {gameTab==="ladder"   && <LadderGame/>}
             {gameTab==="random"   && <RandomPicker/>}
             {gameTab==="oddeven"  && <OddEvenGame/>}
-            {gameTab==="reaction" && <ReactionGame/>}
-            {gameTab==="mole"     && <WhackAMole/>}
-            {gameTab==="2048"     && <Game2048/>}
+            {gameTab==="reaction" && <ReactionGame playerName={myName}/>}
+            {gameTab==="mole"     && <WhackAMole playerName={myName}/>}
+            {gameTab==="2048"     && <Game2048 playerName={myName}/>}
+            {gameTab==="ranking"  && <RankingBoard/>}
           </div>
           <p className="text-xs text-gray-400 text-center mt-4">내기는 적당히 😄</p>
         </>
