@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Bell, X, BellOff, BellRing, Clock, RefreshCw, Plus, Shuffle, RotateCcw } from "lucide-react";
+import { Bell, X, BellOff, BellRing, Clock, RefreshCw, Plus, Shuffle, RotateCcw, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
 import Avatar from "@/components/Avatar";
 import { registerPush } from "@/components/PushSubscriber";
@@ -248,6 +248,10 @@ export default function GatheringPage() {
   const [chatSending, setChatSending] = useState(false);
   const [gatherLogs, setGatherLogs] = useState<GatherLog[]>([]);
   const [gatherStats, setGatherStats] = useState({ day: 0, week: 0, month: 0 });
+  const [callerStats, setCallerStats] = useState<{ name: string; count: number }[]>([]);
+  const [locStats, setLocStats] = useState<{ location: string; count: number }[]>([]);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [statsTab, setStatsTab] = useState<"count" | "caller" | "loc">("count");
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
@@ -276,6 +280,8 @@ export default function GatheringPage() {
       const data = await res.json();
       setGatherLogs(data.history ?? []);
       setGatherStats(data.stats ?? { day: 0, week: 0, month: 0 });
+      setCallerStats(data.callerStats ?? []);
+      setLocStats(data.locStats ?? []);
     } catch { /* no-op */ }
   };
 
@@ -498,45 +504,129 @@ export default function GatheringPage() {
             </div>
           )}
 
-          {/* 집합 발령 통계 */}
-          <div className="bg-white rounded-2xl shadow-sm px-4 py-3 mb-4">
-            <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase mb-3">발령 통계</p>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              {[["오늘", gatherStats.day], ["이번 주", gatherStats.week], ["이번 달", gatherStats.month]].map(([label, count]) => (
-                <div key={String(label)} className="bg-gray-50 rounded-xl py-2.5">
-                  <p className="text-[22px] font-black text-gray-800">{count}</p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">{label}</p>
-                </div>
+          {/* 발령 통계 */}
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-4">
+            {/* 탭 */}
+            <div className="flex border-b border-gray-100">
+              {([["count","📊 기간별"],["caller","👤 발령자"],["loc","📍 장소별"]] as ["count"|"caller"|"loc", string][]).map(([key, label]) => (
+                <button key={key} type="button" onClick={() => setStatsTab(key)}
+                  className={`flex-1 py-2.5 text-[12px] font-semibold transition-colors ${statsTab === key ? "text-blue-600 border-b-2 border-blue-500" : "text-gray-400"}`}>
+                  {label}
+                </button>
               ))}
+            </div>
+
+            <div className="px-4 py-3">
+              {/* 기간별 */}
+              {statsTab === "count" && (
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  {([["오늘", gatherStats.day], ["이번 주", gatherStats.week], ["이번 달", gatherStats.month]] as [string, number][]).map(([label, count]) => (
+                    <div key={label} className="bg-gray-50 rounded-xl py-3">
+                      <p className="text-[24px] font-black text-gray-800">{count}</p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">{label}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 발령자 순위 */}
+              {statsTab === "caller" && (
+                <div className="space-y-2">
+                  {callerStats.length === 0 ? (
+                    <p className="text-[13px] text-gray-400 text-center py-3">이번달 기록 없음</p>
+                  ) : callerStats.map(({ name, count }, i) => {
+                    const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+                    const maxCount = callerStats[0].count;
+                    return (
+                      <div key={name} className="flex items-center gap-3">
+                        <span className="text-[16px] w-6 text-center flex-shrink-0">{medal}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-[14px] font-semibold text-gray-800 truncate">{name}</p>
+                            <p className="text-[13px] font-bold text-blue-600 flex-shrink-0 ml-2">{count}회</p>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-1.5">
+                            <div className="progress-bar bg-blue-500 rounded-full h-1.5 transition-all"
+                              style={{ "--progress": `${(count / maxCount) * 100}%` } as React.CSSProperties} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <p className="text-[11px] text-gray-300 text-center pt-1">이번달 기준</p>
+                </div>
+              )}
+
+              {/* 장소별 */}
+              {statsTab === "loc" && (
+                <div className="space-y-2">
+                  {locStats.length === 0 ? (
+                    <p className="text-[13px] text-gray-400 text-center py-3">이번달 기록 없음</p>
+                  ) : (() => {
+                    const locEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
+                    const maxCount = locStats[0].count;
+                    return locStats.map(({ location, count }) => (
+                      <div key={location} className="flex items-center gap-3">
+                        <span className="text-[18px] flex-shrink-0">{locEmoji[location] ?? "📍"}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-[14px] font-semibold text-gray-800">{location}</p>
+                            <p className="text-[13px] font-bold text-orange-500 flex-shrink-0 ml-2">{count}회</p>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-1.5">
+                            <div className="progress-bar bg-orange-400 rounded-full h-1.5 transition-all"
+                              style={{ "--progress": `${(count / maxCount) * 100}%` } as React.CSSProperties} />
+                          </div>
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                  <p className="text-[11px] text-gray-300 text-center pt-1">이번달 기준</p>
+                </div>
+              )}
             </div>
           </div>
 
           {/* 최근 발령 기록 */}
-          {gatherLogs.length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase px-4 pt-3 pb-2">최근 기록</p>
-              {gatherLogs.slice(0, 10).map((log, idx) => {
-                const locEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
-                const going = (log.checkins ?? []).map(normalizeCheckin).filter(c => c.status === "going").length;
-                const cant  = (log.checkins ?? []).map(normalizeCheckin).filter(c => c.status === "cant").length;
-                return (
-                  <div key={log.id} className={`flex items-center gap-3 px-4 py-3 ${idx < Math.min(gatherLogs.length, 10) - 1 ? "border-b border-gray-50" : ""}`}>
-                    <span className="text-xl flex-shrink-0">{locEmoji[log.location] ?? "📍"}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-[14px] font-semibold text-gray-800">{log.location}</p>
-                        {log.message && <p className="text-[12px] text-gray-400 truncate">"{log.message}"</p>}
+          {gatherLogs.length > 0 && (() => {
+            const locEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
+            const visible = historyExpanded ? gatherLogs : gatherLogs.slice(0, 3);
+            return (
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                  <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase">최근 기록</p>
+                  <span className="text-[11px] text-gray-300">{gatherLogs.length}건</span>
+                </div>
+                {visible.map((log, idx) => {
+                  const going = (log.checkins ?? []).map(normalizeCheckin).filter(c => c.status === "going").length;
+                  const cant  = (log.checkins ?? []).map(normalizeCheckin).filter(c => c.status === "cant").length;
+                  const wait  = (log.checkins ?? []).map(normalizeCheckin).filter(c => c.status === "waiting").length;
+                  return (
+                    <div key={log.id} className={`flex items-center gap-3 px-4 py-3 ${idx < visible.length - 1 ? "border-b border-gray-50" : ""}`}>
+                      <span className="text-xl flex-shrink-0">{locEmoji[log.location] ?? "📍"}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[14px] font-semibold text-gray-800">{log.location}</p>
+                          {log.message && <p className="text-[12px] text-gray-400 truncate">"{log.message}"</p>}
+                        </div>
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          {format(new Date(log.calledAt), "M/d HH:mm")} · <span className="font-medium text-gray-600">{log.calledBy}</span>
+                          {log.checkins.length > 0 && <span className="ml-1">· ✅{going} ⏳{wait} ❌{cant}</span>}
+                        </p>
                       </div>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
-                        {format(new Date(log.calledAt), "M/d HH:mm")} · {log.calledBy}
-                        {log.checkins.length > 0 && ` · ✅${going} ❌${cant}`}
-                      </p>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+                {gatherLogs.length > 3 && (
+                  <button type="button" onClick={() => setHistoryExpanded((v) => !v)}
+                    className="w-full flex items-center justify-center gap-1.5 py-3 border-t border-gray-50 text-[13px] font-semibold text-blue-500 hover:bg-gray-50 transition-colors">
+                    <ChevronDown size={15} className={`transition-transform ${historyExpanded ? "rotate-180" : ""}`} />
+                    {historyExpanded ? "접기" : `${gatherLogs.length - 3}개 더보기`}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {call && (
             <>
