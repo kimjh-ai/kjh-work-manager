@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { Bell, X, BellOff, BellRing, Clock, RefreshCw, Plus, Shuffle, RotateCcw, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
@@ -15,7 +15,7 @@ import PraiseCard from "@/components/today/PraiseCard";
 type Location = "3층" | "옥상" | "편의점";
 type Status = "going" | "waiting" | "cant";
 type PageTab = "gather" | "today" | "games";
-type GameTab = "ladder" | "random" | "oddeven";
+type GameTab = "ladder" | "random" | "oddeven" | "reaction" | "mole" | "2048";
 
 interface ChatMessage {
   id: string;
@@ -60,6 +60,234 @@ const STATUS_CONFIG = {
 };
 function normalizeCheckin(c: string | Checkin): Checkin {
   return typeof c === "string" ? { name: c, status: "going" } : c;
+}
+
+/* ── 반응속도 ── */
+function ReactionGame() {
+  type Phase = "idle" | "waiting" | "go" | "result";
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [ms, setMs] = useState<number | null>(null);
+  const [tooEarly, setTooEarly] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startRef = useRef(0);
+
+  const start = () => {
+    setPhase("waiting"); setMs(null); setTooEarly(false);
+    timerRef.current = setTimeout(() => { setPhase("go"); startRef.current = Date.now(); }, 1500 + Math.random() * 3000);
+  };
+  const tap = () => {
+    if (phase === "idle" || phase === "result") { start(); return; }
+    if (phase === "waiting") { clearTimeout(timerRef.current!); setTooEarly(true); setPhase("idle"); return; }
+    if (phase === "go") { setMs(Date.now() - startRef.current); setPhase("result"); }
+  };
+  useEffect(() => () => clearTimeout(timerRef.current!), []);
+
+  const rating = ms === null ? "" : ms < 200 ? "번개급! ⚡" : ms < 300 ? "빠름 🔥" : ms < 400 ? "보통 😊" : "느림 🐢";
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-gray-400 text-center">초록색으로 바뀌면 최대한 빨리 탭!</p>
+      <button type="button" onClick={tap}
+        className={`w-full h-52 rounded-2xl flex flex-col items-center justify-center gap-3 transition-colors select-none ${
+          phase === "go" ? "bg-green-500" : phase === "waiting" ? "bg-red-400" : "bg-gray-100"
+        }`}>
+        {phase === "idle"   && <><p className="text-5xl">👆</p><p className="text-gray-600 font-bold text-lg">탭해서 시작!</p></>}
+        {phase === "waiting"&& <><p className="text-5xl">🔴</p><p className="text-white font-bold text-lg">기다리세요...</p></>}
+        {phase === "go"     && <p className="text-white font-black text-5xl">지금!</p>}
+        {phase === "result" && ms !== null && (
+          <>
+            <p className="text-5xl font-black text-gray-800">{ms}<span className="text-2xl">ms</span></p>
+            <p className="text-xl font-bold text-gray-600">{rating}</p>
+            <p className="text-sm text-gray-400 mt-1">탭해서 다시하기</p>
+          </>
+        )}
+      </button>
+      {tooEarly && <p className="text-red-500 font-semibold text-center">너무 빨리 눌렀어요! 😅</p>}
+    </div>
+  );
+}
+
+/* ── 두더지 잡기 ── */
+function WhackAMole() {
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [moleIdx, setMoleIdx] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [best, setBest] = useState(0);
+  const moleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gameRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scoreRef = useRef(0);
+
+  const showMole = (s: number) => {
+    setMoleIdx(Math.floor(Math.random() * 9));
+    moleRef.current = setTimeout(() => { setMoleIdx(null); showMole(s); }, Math.max(350, 850 - s * 15));
+  };
+
+  const start = () => {
+    scoreRef.current = 0; setScore(0); setTimeLeft(30); setPlaying(true);
+    showMole(0);
+    gameRef.current = setInterval(() => {
+      setTimeLeft(t => {
+        if (t <= 1) {
+          clearInterval(gameRef.current!); clearTimeout(moleRef.current!);
+          setPlaying(false); setMoleIdx(null);
+          setBest(b => Math.max(b, scoreRef.current));
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+  };
+
+  const whack = (i: number) => {
+    if (!playing || i !== moleIdx) return;
+    clearTimeout(moleRef.current!);
+    scoreRef.current += 1; setScore(s => s + 1);
+    setMoleIdx(null); showMole(scoreRef.current);
+  };
+
+  useEffect(() => () => { clearTimeout(moleRef.current!); clearInterval(gameRef.current!); }, []);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-around items-center">
+        <div className="text-center"><p className="text-3xl font-black text-gray-800">{score}</p><p className="text-xs text-gray-400">점수</p></div>
+        <div className="text-center"><p className={`text-3xl font-black ${timeLeft <= 10 ? "text-red-500" : "text-gray-800"}`}>{timeLeft}s</p><p className="text-xs text-gray-400">남은 시간</p></div>
+        <div className="text-center"><p className="text-3xl font-black text-yellow-500">{best}</p><p className="text-xs text-gray-400">최고</p></div>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {Array.from({ length: 9 }).map((_, i) => (
+          <button key={i} type="button" onClick={() => whack(i)}
+            className={`aspect-square rounded-2xl text-4xl flex items-center justify-center transition-all select-none ${
+              moleIdx === i ? "bg-green-100 scale-90 shadow-inner" : "bg-gray-100"
+            }`}>
+            {moleIdx === i ? "🦔" : ""}
+          </button>
+        ))}
+      </div>
+      {!playing && (
+        <button type="button" onClick={start}
+          className="w-full bg-green-500 text-white rounded-2xl py-3 text-lg font-bold">
+          {timeLeft === 30 ? "🦔 시작!" : `다시하기! (최고: ${best}점)`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ── 2048 ── */
+const TILE_BG: Record<number, string> = {
+  0:"bg-gray-200",2:"bg-amber-50",4:"bg-amber-100",8:"bg-orange-300",16:"bg-orange-400",
+  32:"bg-orange-500",64:"bg-orange-600",128:"bg-yellow-400",256:"bg-yellow-500",
+  512:"bg-yellow-600",1024:"bg-red-400",2048:"bg-red-600",
+};
+const TILE_FG: Record<number, string> = {
+  0:"text-transparent",2:"text-gray-700",4:"text-gray-700",8:"text-white",16:"text-white",
+  32:"text-white",64:"text-white",128:"text-white",256:"text-white",
+  512:"text-white",1024:"text-white",2048:"text-white",
+};
+function g2048Init(): number[][] {
+  const g: number[][] = Array.from({ length: 4 }, () => [0,0,0,0]);
+  return g2048Add(g2048Add(g));
+}
+function g2048Add(g: number[][]): number[][] {
+  const emp: [number,number][] = [];
+  g.forEach((r,i)=>r.forEach((v,j)=>{ if(!v) emp.push([i,j]); }));
+  if(!emp.length) return g;
+  const [r,c]=emp[Math.floor(Math.random()*emp.length)];
+  const ng=g.map(r=>[...r]); ng[r][c]=Math.random()<.9?2:4; return ng;
+}
+function g2048Slide(row: number[]): [number[], number] {
+  const f=row.filter(Boolean); let s=0;
+  for(let i=0;i<f.length-1;i++) if(f[i]===f[i+1]){f[i]*=2;s+=f[i];f.splice(i+1,1);}
+  while(f.length<4)f.push(0); return[f,s];
+}
+function g2048Transpose(g: number[][]): number[][] { return g[0].map((_,c)=>g.map(r=>r[c])); }
+function g2048Move(g: number[][], dir: "l"|"r"|"u"|"d"): [number[][], number] {
+  let rows = dir==="r"?g.map(r=>[...r].reverse()):dir==="u"?g2048Transpose(g):dir==="d"?g2048Transpose(g).map(r=>[...r].reverse()):g.map(r=>[...r]);
+  let total=0; rows=rows.map(r=>{ const[nr,s]=g2048Slide(r);total+=s;return nr; });
+  if(dir==="r")rows=rows.map(r=>r.reverse());
+  if(dir==="u")rows=g2048Transpose(rows);
+  if(dir==="d")rows=g2048Transpose(rows.map(r=>r.reverse()));
+  return[rows,total];
+}
+function g2048Equal(a: number[][], b: number[][]){ return a.every((r,i)=>r.every((v,j)=>v===b[i][j])); }
+function g2048Over(g: number[][]){
+  if(g.some(r=>r.some(v=>!v)))return false;
+  for(let r=0;r<4;r++)for(let c=0;c<4;c++){
+    if(c<3&&g[r][c]===g[r][c+1])return false;
+    if(r<3&&g[r][c]===g[r+1][c])return false;
+  }return true;
+}
+function Game2048() {
+  const [grid, setGrid] = useState<number[][]>(g2048Init);
+  const [score, setScore] = useState(0);
+  const [best, setBest] = useState(0);
+  const [over, setOver] = useState(false);
+  const [won, setWon] = useState(false);
+  const ts = useRef({x:0,y:0});
+
+  const move = useCallback((dir: "l"|"r"|"u"|"d") => {
+    if(over) return;
+    setGrid(g => {
+      const[ng,delta]=g2048Move(g,dir);
+      if(g2048Equal(g,ng)) return g;
+      const fin=g2048Add(ng);
+      setScore(s=>{ const ns=s+delta; setBest(b=>Math.max(b,ns)); return ns; });
+      if(fin.some(r=>r.includes(2048))) setWon(true);
+      if(g2048Over(fin)) setOver(true);
+      return fin;
+    });
+  }, [over]);
+
+  useEffect(() => {
+    const h=(e: KeyboardEvent)=>{
+      const m: Record<string,"l"|"r"|"u"|"d">={ArrowLeft:"l",ArrowRight:"r",ArrowUp:"u",ArrowDown:"d"};
+      if(m[e.key]){e.preventDefault();move(m[e.key]);}
+    };
+    window.addEventListener("keydown",h); return()=>window.removeEventListener("keydown",h);
+  },[move]);
+
+  const restart=()=>{setGrid(g2048Init());setScore(0);setOver(false);setWon(false);};
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="bg-gray-100 rounded-xl px-4 py-2 text-center min-w-[80px]">
+          <p className="text-[11px] text-gray-400 font-semibold">점수</p>
+          <p className="text-xl font-black">{score}</p>
+        </div>
+        <div className="bg-yellow-50 rounded-xl px-4 py-2 text-center min-w-[80px]">
+          <p className="text-[11px] text-yellow-500 font-semibold">최고</p>
+          <p className="text-xl font-black text-yellow-600">{best}</p>
+        </div>
+        <button type="button" onClick={restart} className="bg-gray-100 text-gray-600 rounded-xl px-4 py-2 text-sm font-semibold">새 게임</button>
+      </div>
+      {(over||won)&&(
+        <div className={`rounded-2xl p-3 text-center ${won?"bg-yellow-50 border-2 border-yellow-300":"bg-red-50 border-2 border-red-200"}`}>
+          <p className="text-lg font-black">{won?"🎉 2048 달성!":"😭 게임 오버"}</p>
+          <button type="button" onClick={restart} className="mt-1 text-sm font-semibold text-blue-500">다시하기</button>
+        </div>
+      )}
+      <div className="bg-gray-300 rounded-2xl p-2 grid grid-cols-4 gap-2 touch-none select-none"
+        onTouchStart={e=>{ts.current={x:e.touches[0].clientX,y:e.touches[0].clientY};}}
+        onTouchEnd={e=>{
+          const dx=e.changedTouches[0].clientX-ts.current.x;
+          const dy=e.changedTouches[0].clientY-ts.current.y;
+          if(Math.abs(dx)>Math.abs(dy))move(dx>30?"r":dx<-30?"l":"r");
+          else move(dy>30?"d":dy<-30?"u":"d");
+        }}>
+        {grid.flat().map((v,i)=>(
+          <div key={i} className={`aspect-square rounded-xl flex items-center justify-center font-black transition-all
+            ${TILE_BG[v]??"bg-red-700"} ${TILE_FG[v]??"text-white"}
+            ${v>=1024?"text-sm":v>=128?"text-lg":"text-2xl"}`}>
+            {v||""}
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-gray-400 text-center">스와이프 또는 방향키로 조작</p>
+    </div>
+  );
 }
 
 /* ── 사다리 게임 ── */
@@ -412,16 +640,28 @@ export default function GatheringPage() {
       {/* ── 게임 탭 ── */}
       {pageTab === "games" && (
         <>
-          <div className="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1">
-            {([["ladder","🪜 사다리"],["random","🎯 랜덤뽑기"],["oddeven","🎲 홀짝"]] as [GameTab,string][]).map(([k,l])=>(
+          <div className="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
+            {([
+              ["ladder",  "🪜 사다리"],
+              ["random",  "🎯 랜덤뽑기"],
+              ["oddeven", "🎲 홀짝"],
+              ["reaction","⚡ 반응속도"],
+              ["mole",    "🦔 두더지"],
+              ["2048",    "🎮 2048"],
+            ] as [GameTab,string][]).map(([k,l])=>(
               <button key={k} type="button" onClick={()=>setGameTab(k)}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${gameTab===k?"bg-white text-gray-900 shadow-sm":"text-gray-500"}`}>{l}</button>
+                className={`flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-semibold transition-colors whitespace-nowrap ${
+                  gameTab===k ? "bg-blue-500 text-white shadow-sm" : "bg-gray-100 text-gray-500"
+                }`}>{l}</button>
             ))}
           </div>
           <div className="card">
-            {gameTab==="ladder"  && <LadderGame/>}
-            {gameTab==="random"  && <RandomPicker/>}
-            {gameTab==="oddeven" && <OddEvenGame/>}
+            {gameTab==="ladder"   && <LadderGame/>}
+            {gameTab==="random"   && <RandomPicker/>}
+            {gameTab==="oddeven"  && <OddEvenGame/>}
+            {gameTab==="reaction" && <ReactionGame/>}
+            {gameTab==="mole"     && <WhackAMole/>}
+            {gameTab==="2048"     && <Game2048/>}
           </div>
           <p className="text-xs text-gray-400 text-center mt-4">내기는 적당히 😄</p>
         </>
