@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       const statusLabel: Record<string, string> = { going: "나갈게요 ✅", waiting: "기다려주세요 ⏳", cant: "못나가요 ❌" };
       const label = statusLabel[body.status] ?? body.status;
       const notifBody = body.reason ? `${label} — "${body.reason}"` : label;
-      await sendPush(`🚨 ${body.name}님 응답`, notifBody, "checkin");
+      await sendPush(`🚨 ${body.name}님 응답`, notifBody, "checkin", body.imageUrl ?? undefined);
     } catch { /* no-op */ }
     return NextResponse.json({ ok: true });
   }
@@ -56,7 +56,8 @@ export async function POST(req: NextRequest) {
       await sendPush(
         `🔔 집합 재알림! ${emoji} ${call.location}`,
         `아직 응답 안 하신 분들 확인해주세요! - ${call.calledBy}`,
-        "gather"
+        "gather",
+        body.imageUrl ?? undefined
       );
     } catch { /* no-op */ }
     return NextResponse.json({ ok: true });
@@ -88,7 +89,8 @@ export async function POST(req: NextRequest) {
     await sendPush(
       `🚨 집합! ${emoji} ${body.location}`,
       body.message ? `"${body.message}" - ${body.calledBy}` : `${body.calledBy}님이 집합을 발령했습니다`,
-      "gather"
+      "gather",
+      body.imageUrl ?? undefined
     );
   } catch { /* no-op */ }
 

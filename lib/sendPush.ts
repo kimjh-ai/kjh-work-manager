@@ -21,7 +21,7 @@ export const DEFAULT_PREFS: NotifPrefs = { gather: true, checkin: true, chat: tr
 
 export const SUB_KEY = "push:subscriptions";
 
-export async function sendPush(title: string, body: string, type: NotifType): Promise<void> {
+export async function sendPush(title: string, body: string, type: NotifType, icon?: string): Promise<void> {
   const vKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   const vPriv = process.env.VAPID_PRIVATE_KEY;
   const vEmail = process.env.VAPID_EMAIL;
@@ -37,7 +37,7 @@ export async function sendPush(title: string, body: string, type: NotifType): Pr
     return prefs[type] !== false;
   });
 
-  const payload = JSON.stringify({ title, body });
+  const payload = JSON.stringify({ title, body, icon: icon ?? null });
   const results = await Promise.allSettled(
     targets.map((sub) => webpush.sendNotification(sub as unknown as webpush.PushSubscription, payload))
   );

@@ -1,123 +1,316 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { Plus, X, Shuffle, RotateCcw, ChevronLeft } from "lucide-react";
 
 type GameTab = "suika" | "reaction" | "mole" | "ladder" | "random" | "oddeven" | "ranking";
 
 /* ─────────────────────────────────────────────
-   🍉 과일 합치기 (수박게임 스타일)
+   🍉 수박게임 (Canvas Physics)
 ───────────────────────────────────────────── */
-const SCOLS = 6, SROWS = 8;
-const FRUITS = ["🍒", "🍓", "🍋", "🍊", "🍎", "🍑", "🍇", "🍉"];
-const FRUIT_PTS = [1, 3, 6, 10, 15, 21, 28, 36];
-type Cell = number | null;
+const CW = 300, CH = 460;
+const WALL = 7, FLOOR = 7;
+const DROP_Y = 52;
+const DANGER_Y = 60;
+const GRAVITY = 0.42;
+const BOUNCE = 0.32;
+const FRICTION = 0.987;
 
-function suikaEmpty(): Cell[][] {
-  return Array.from({ length: SROWS }, () => Array(SCOLS).fill(null));
+const FRUIT_DATA = [
+  { r: 13, color: "#e11d48", darkColor: "#9f1239", emoji: "🍒", pts: 1,  label: "체리" },
+  { r: 18, color: "#f43f5e", darkColor: "#be123c", emoji: "🍓", pts: 3,  label: "딸기" },
+  { r: 24, color: "#a855f7", darkColor: "#7e22ce", emoji: "🍇", pts: 6,  label: "포도" },
+  { r: 31, color: "#f97316", darkColor: "#c2410c", emoji: "🍊", pts: 10, label: "귤"  },
+  { r: 39, color: "#eab308", darkColor: "#a16207", emoji: "🍋", pts: 15, label: "레몬" },
+  { r: 48, color: "#ef4444", darkColor: "#b91c1c", emoji: "🍎", pts: 21, label: "사과" },
+  { r: 58, color: "#84cc16", darkColor: "#4d7c0f", emoji: "🍐", pts: 28, label: "배"  },
+  { r: 71, color: "#22c55e", darkColor: "#15803d", emoji: "🍉", pts: 36, label: "수박" },
+];
+
+interface SBall {
+  id: number;
+  x: number; y: number;
+  vx: number; vy: number;
+  type: number;
+  age: number;
 }
-function suikaGravity(grid: Cell[][]): Cell[][] {
-  const g = grid.map(r => [...r]);
-  for (let c = 0; c < SCOLS; c++) {
-    const fruits: number[] = [];
-    for (let r = 0; r < SROWS; r++) { if (g[r][c] !== null) fruits.push(g[r][c] as number); g[r][c] = null; }
-    for (let i = 0; i < fruits.length; i++) g[SROWS - fruits.length + i][c] = fruits[i];
-  }
-  return g;
+
+function hexLighten(hex: string, amt = 60): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, ((n >> 16) & 0xff) + amt);
+  const g = Math.min(255, ((n >> 8)  & 0xff) + amt);
+  const b = Math.min(255, ( n        & 0xff) + amt);
+  return `rgb(${r},${g},${b})`;
 }
-function suikaConnected(grid: Cell[][], sr: number, sc: number): [number, number][] {
-  const type = grid[sr][sc];
-  if (type === null) return [];
-  const seen = new Set<string>();
-  const cells: [number, number][] = [];
-  const q: [number, number][] = [[sr, sc]];
-  seen.add(`${sr},${sc}`);
-  while (q.length) {
-    const [r, c] = q.shift()!;
-    cells.push([r, c]);
-    for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
-      const nr = r+dr, nc = c+dc, k = `${nr},${nc}`;
-      if (nr >= 0 && nr < SROWS && nc >= 0 && nc < SCOLS && !seen.has(k) && grid[nr][nc] === type) { seen.add(k); q.push([nr, nc]); }
+function randFruit() { return Math.floor(Math.random() * 4); }
+
+function SuikaGame({ playerName }: { playerName: string }) {
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
+  const ballsRef     = useRef<SBall[]>([]);
+  const scoreRef     = useRef(0);
+  const idRef        = useRef(0);
+  const canDropRef   = useRef(true);
+  const dropXRef     = useRef(CW / 2);
+  const curTypeRef   = useRef(randFruit());
+  const nextTypeRef  = useRef(randFruit());
+  const animRef      = useRef(0);
+  const submittedRef = useRef(false);
+  const overRef      = useRef(false);
+  const nameRef      = useRef(playerName);
+  useEffect(() => { nameRef.current = playerName; }, [playerName]);
+
+  const [score,       setScore]       = useState(0);
+  const [best,        setBest]        = useState(0);
+  const [over,        setOver]        = useState(false);
+  const [newBest,     setNewBest]     = useState(false);
+  const [curDisplay,  setCurDisplay]  = useState(() => curTypeRef.current);
+  const [nextDisplay, setNextDisplay] = useState(() => nextTypeRef.current);
+
+  /* ── draw ── */
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, CW, CH);
+
+    /* 배경 */
+    const bg = ctx.createLinearGradient(0, 0, 0, CH);
+    bg.addColorStop(0, "#fef9ee"); bg.addColorStop(1, "#fef3c7");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, CW, CH);
+
+    /* 위험선 */
+    ctx.save();
+    ctx.fillStyle = "rgba(239,68,68,0.06)";
+    ctx.fillRect(WALL, 0, CW - WALL * 2, DANGER_Y);
+    ctx.strokeStyle = "rgba(239,68,68,0.35)";
+    ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(WALL, DANGER_Y); ctx.lineTo(CW - WALL, DANGER_Y); ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
+
+    /* 벽 & 바닥 (입체감) */
+    const drawWall = (x: number, w: number, flip: boolean) => {
+      const g = ctx.createLinearGradient(x, 0, x + w, 0);
+      g.addColorStop(flip ? 0 : 0, flip ? "#d97706" : "#92400e");
+      g.addColorStop(flip ? 1 : 1, flip ? "#92400e" : "#d97706");
+      ctx.fillStyle = g; ctx.fillRect(x, 0, w, CH);
+    };
+    drawWall(0, WALL, false);
+    drawWall(CW - WALL, WALL, true);
+    /* 바닥 — 3D 느낌 */
+    const fg = ctx.createLinearGradient(0, CH - FLOOR, 0, CH);
+    fg.addColorStop(0, "#d97706"); fg.addColorStop(1, "#92400e");
+    ctx.fillStyle = fg; ctx.fillRect(0, CH - FLOOR, CW, FLOOR);
+
+    /* 드롭 가이드 */
+    if (canDropRef.current && !overRef.current) {
+      const fd = FRUIT_DATA[curTypeRef.current];
+      const gx = Math.max(WALL + fd.r, Math.min(CW - WALL - fd.r, dropXRef.current));
+      /* 세로 점선 */
+      ctx.save();
+      ctx.strokeStyle = "rgba(0,0,0,0.12)"; ctx.setLineDash([3, 6]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(gx, DROP_Y + fd.r); ctx.lineTo(gx, CH - FLOOR); ctx.stroke();
+      ctx.setLineDash([]); ctx.restore();
+      /* 고스트 과일 */
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.arc(gx, DROP_Y, fd.r, 0, Math.PI * 2);
+      const hg = ctx.createRadialGradient(gx - fd.r * 0.3, DROP_Y - fd.r * 0.3, fd.r * 0.1, gx, DROP_Y, fd.r);
+      hg.addColorStop(0, hexLighten(fd.color)); hg.addColorStop(1, fd.color);
+      ctx.fillStyle = hg; ctx.fill();
+      ctx.font = `${fd.r * 1.35}px serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(fd.emoji, gx, DROP_Y);
+      ctx.globalAlpha = 1;
     }
-  }
-  return cells;
-}
-function suikaMerges(grid: Cell[][]): [Cell[][], number] {
-  let g = grid, total = 0;
-  for (let iter = 0; iter < SCOLS * SROWS; iter++) {
-    let merged = false;
-    outer: for (let r = SROWS - 1; r >= 0; r--) {
-      for (let c = 0; c < SCOLS; c++) {
-        if (g[r][c] === null || (g[r][c] as number) >= FRUITS.length - 1) continue;
-        const type = g[r][c] as number;
-        const cells = suikaConnected(g, r, c);
-        if (cells.length >= 2) {
-          const keep = cells.reduce((a, b) => b[0] > a[0] || (b[0] === a[0] && b[1] > a[1]) ? b : a);
-          const ng = g.map(row => [...row]);
-          for (const [mr, mc] of cells) ng[mr][mc] = null;
-          ng[keep[0]][keep[1]] = type + 1;
-          total += FRUIT_PTS[type + 1] * cells.length;
-          g = suikaGravity(ng);
-          merged = true; break outer;
+
+    /* 볼 */
+    for (const b of ballsRef.current) {
+      const fd = FRUIT_DATA[b.type];
+      /* 그라디언트 원 */
+      const gr = ctx.createRadialGradient(
+        b.x - fd.r * 0.3, b.y - fd.r * 0.35, fd.r * 0.05,
+        b.x, b.y, fd.r
+      );
+      gr.addColorStop(0, hexLighten(fd.color, 80));
+      gr.addColorStop(0.6, fd.color);
+      gr.addColorStop(1, fd.darkColor);
+      ctx.beginPath(); ctx.arc(b.x, b.y, fd.r, 0, Math.PI * 2);
+      ctx.fillStyle = gr; ctx.fill();
+      /* 테두리 */
+      ctx.strokeStyle = fd.darkColor + "55"; ctx.lineWidth = 1.5; ctx.stroke();
+      /* 광택 하이라이트 */
+      const hl = ctx.createRadialGradient(
+        b.x - fd.r * 0.3, b.y - fd.r * 0.4, 0,
+        b.x - fd.r * 0.2, b.y - fd.r * 0.3, fd.r * 0.5
+      );
+      hl.addColorStop(0, "rgba(255,255,255,0.55)");
+      hl.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.beginPath(); ctx.arc(b.x, b.y, fd.r, 0, Math.PI * 2);
+      ctx.fillStyle = hl; ctx.fill();
+      /* 이모지 */
+      ctx.font = `${fd.r * 1.25}px serif`;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(fd.emoji, b.x, b.y + 1);
+    }
+  }, []);
+
+  /* ── tick (physics loop) ── */
+  const tick = useCallback(() => {
+    if (overRef.current) return;
+    const balls = ballsRef.current;
+
+    /* 물리 */
+    for (const b of balls) {
+      b.vy += GRAVITY; b.vx *= FRICTION;
+      b.x += b.vx; b.y += b.vy; b.age++;
+      const r = FRUIT_DATA[b.type].r;
+      if (b.x - r < WALL)       { b.x = WALL + r;       b.vx =  Math.abs(b.vx) * BOUNCE; }
+      if (b.x + r > CW - WALL)  { b.x = CW - WALL - r;  b.vx = -Math.abs(b.vx) * BOUNCE; }
+      if (b.y + r > CH - FLOOR) { b.y = CH - FLOOR - r; b.vy = -Math.abs(b.vy) * BOUNCE; }
+    }
+
+    /* 합체 감지 (충돌 해결 전 — 자연 겹침 기준) */
+    const merged = new Set<number>();
+    let scoreDelta = 0;
+    const toAdd: SBall[] = [];
+    for (let i = 0; i < balls.length; i++) {
+      if (merged.has(balls[i].id)) continue;
+      for (let j = i + 1; j < balls.length; j++) {
+        if (merged.has(balls[j].id)) continue;
+        if (balls[i].type !== balls[j].type) continue;
+        if (balls[i].type >= FRUIT_DATA.length - 1) continue;
+        if (balls[i].age < 4 && balls[j].age < 4) continue;
+        const dx = balls[j].x - balls[i].x, dy = balls[j].y - balls[i].y;
+        const minD = FRUIT_DATA[balls[i].type].r * 2;
+        if (dx * dx + dy * dy < minD * minD) {
+          merged.add(balls[i].id); merged.add(balls[j].id);
+          const nt = balls[i].type + 1;
+          toAdd.push({
+            id: idRef.current++,
+            x: (balls[i].x + balls[j].x) / 2,
+            y: (balls[i].y + balls[j].y) / 2,
+            vx: 0, vy: -2.8, type: nt, age: 0,
+          });
+          scoreDelta += FRUIT_DATA[nt].pts;
+          break;
         }
       }
     }
-    if (!merged) break;
-  }
-  return [g, total];
-}
+    if (merged.size > 0) {
+      ballsRef.current = balls.filter(b => !merged.has(b.id)).concat(toAdd);
+      scoreRef.current += scoreDelta;
+      setScore(scoreRef.current);
+      setBest(prev => Math.max(prev, scoreRef.current));
+    }
 
-function SuikaGame({ playerName }: { playerName: string }) {
-  const [grid, setGrid] = useState<Cell[][]>(suikaEmpty);
-  const [score, setScore] = useState(0);
-  const [best, setBest] = useState(0);
-  const [next, setNext] = useState(() => Math.floor(Math.random() * 4));
-  const [over, setOver] = useState(false);
-  const [newBest, setNewBest] = useState(false);
-  const scoreRef = useRef(0);
-  const submittedRef = useRef(false);
+    /* 원-원 충돌 해결 */
+    const ab = ballsRef.current;
+    for (let i = 0; i < ab.length; i++) {
+      for (let j = i + 1; j < ab.length; j++) {
+        const a = ab[i], b = ab[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const dist2 = dx * dx + dy * dy;
+        const minD = FRUIT_DATA[a.type].r + FRUIT_DATA[b.type].r;
+        if (dist2 < minD * minD && dist2 > 0.0001) {
+          const dist = Math.sqrt(dist2);
+          const nx = dx / dist, ny = dy / dist;
+          const push = (minD - dist) * 0.5;
+          a.x -= nx * push; a.y -= ny * push;
+          b.x += nx * push; b.y += ny * push;
+          const relVn = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+          if (relVn > 0) {
+            const imp = relVn * 0.52;
+            a.vx -= imp * nx; a.vy -= imp * ny;
+            b.vx += imp * nx; b.vy += imp * ny;
+          }
+        }
+      }
+    }
+
+    /* 게임 오버 */
+    if (ballsRef.current.some(b => b.age > 80 && b.y - FRUIT_DATA[b.type].r < DANGER_Y)) {
+      overRef.current = true;
+      setOver(true);
+      if (!submittedRef.current && nameRef.current && scoreRef.current > 0) {
+        submittedRef.current = true;
+        fetch("/api/game-rank", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ game: "suika", name: nameRef.current, score: scoreRef.current }),
+        }).then(r => r.json()).then(d => { if (d.newBest) setNewBest(true); }).catch(() => {});
+      }
+      draw(); return;
+    }
+
+    draw();
+    animRef.current = requestAnimationFrame(tick);
+  }, [draw]);
+
+  /* ── drop ── */
+  const dropBall = useCallback((x: number) => {
+    if (!canDropRef.current || overRef.current) return;
+    const type = curTypeRef.current;
+    const r = FRUIT_DATA[type].r;
+    ballsRef.current.push({
+      id: idRef.current++,
+      x: Math.max(WALL + r, Math.min(CW - WALL - r, x)),
+      y: DROP_Y, vx: 0, vy: 1.5, type, age: 0,
+    });
+    curTypeRef.current = nextTypeRef.current;
+    nextTypeRef.current = randFruit();
+    setCurDisplay(curTypeRef.current);
+    setNextDisplay(nextTypeRef.current);
+    canDropRef.current = false;
+    setTimeout(() => { canDropRef.current = true; }, 680);
+  }, []);
+
+  /* ── restart ── */
+  const restart = useCallback(() => {
+    cancelAnimationFrame(animRef.current);
+    ballsRef.current = []; scoreRef.current = 0; idRef.current = 0;
+    canDropRef.current = true; overRef.current = false; submittedRef.current = false;
+    curTypeRef.current = randFruit(); nextTypeRef.current = randFruit();
+    setScore(0); setBest(b => b); setOver(false); setNewBest(false);
+    setCurDisplay(curTypeRef.current); setNextDisplay(nextTypeRef.current);
+    animRef.current = requestAnimationFrame(tick);
+  }, [tick]);
 
   useEffect(() => {
-    if (over && !submittedRef.current && playerName && scoreRef.current > 0) {
-      submittedRef.current = true;
-      fetch("/api/game-rank", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ game: "suika", name: playerName, score: scoreRef.current }) })
-        .then(r => r.json()).then(d => { if (d.newBest) setNewBest(true); }).catch(() => {});
-    }
-  }, [over, playerName]);
+    animRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animRef.current);
+  }, [tick]);
 
-  const drop = (col: number) => {
-    if (over || grid[0][col] !== null) return;
-    const nextFruit = next;
-    setNext(Math.floor(Math.random() * 4));
-    setGrid(g => {
-      const ng = g.map(r => [...r]);
-      for (let r = SROWS - 1; r >= 0; r--) { if (ng[r][col] === null) { ng[r][col] = nextFruit; break; } }
-      const [merged, pts] = suikaMerges(ng);
-      if (pts > 0) {
-        setScore(s => { const ns = s + pts; scoreRef.current = ns; setBest(b => Math.max(b, ns)); return ns; });
-      }
-      if (merged[0].every(cell => cell !== null)) setOver(true);
-      return merged;
-    });
+  /* ── 포인터 이벤트 ── */
+  const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    dropXRef.current = (e.clientX - rect.left) * (CW / rect.width);
   };
-
-  const restart = () => {
-    setGrid(suikaEmpty()); setScore(0); setOver(false); setNewBest(false);
-    setNext(Math.floor(Math.random() * 4)); scoreRef.current = 0; submittedRef.current = false;
+  const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * (CW / rect.width);
+    dropXRef.current = x;
+    dropBall(x);
   };
 
   return (
     <div className="space-y-3">
+      {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div className="bg-gray-100 rounded-xl px-3 py-2 text-center min-w-[70px]">
           <p className="text-[11px] text-gray-400 font-semibold">점수</p>
           <p className="text-xl font-black">{score}</p>
         </div>
-        <div className="text-center">
-          <p className="text-[11px] text-gray-400 mb-0.5">다음</p>
-          <span className="text-4xl leading-none">{FRUITS[next]}</span>
+        <div className="flex items-center gap-4">
+          <div className="text-center">
+            <p className="text-[10px] text-gray-400 mb-0.5">현재</p>
+            <span className="text-[38px] leading-none">{FRUIT_DATA[curDisplay].emoji}</span>
+            <p className="text-[10px] text-gray-400 mt-0.5">{FRUIT_DATA[curDisplay].label}</p>
+          </div>
+          <div className="text-gray-200 text-lg">→</div>
+          <div className="text-center opacity-60">
+            <p className="text-[10px] text-gray-400 mb-0.5">다음</p>
+            <span className="text-[28px] leading-none">{FRUIT_DATA[nextDisplay].emoji}</span>
+            <p className="text-[10px] text-gray-400 mt-0.5">{FRUIT_DATA[nextDisplay].label}</p>
+          </div>
         </div>
         <div className="bg-yellow-50 rounded-xl px-3 py-2 text-center min-w-[70px]">
           <p className="text-[11px] text-yellow-500 font-semibold">최고</p>
@@ -130,33 +323,30 @@ function SuikaGame({ playerName }: { playerName: string }) {
           <p className="text-lg font-black">😭 게임 오버!</p>
           <p className="text-sm text-gray-500 mt-0.5">최종 점수: {score}점</p>
           {newBest && <p className="text-sm font-bold text-yellow-500 mt-1">🏆 신기록!</p>}
-          <button type="button" onClick={restart} className="mt-2 px-5 py-1.5 bg-red-500 text-white rounded-xl text-sm font-bold">다시하기</button>
+          <button type="button" onClick={restart}
+            className="mt-2 px-5 py-1.5 bg-red-500 text-white rounded-xl text-sm font-bold">다시하기</button>
         </div>
       )}
 
-      <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-2">
-        <div className="grid grid-cols-6 gap-1">
-          {Array.from({ length: SCOLS }).map((_, c) => (
-            <button key={c} type="button" onClick={() => drop(c)}
-              disabled={over || grid[0][c] !== null}
-              className="flex flex-col gap-0.5 rounded-xl transition-colors active:bg-amber-300/40 disabled:opacity-50 select-none touch-none">
-              {Array.from({ length: SROWS }).map((_, r) => (
-                <div key={r} className={`aspect-square rounded-md flex items-center justify-center text-lg ${
-                  grid[r][c] !== null ? "bg-white shadow-sm" : "bg-amber-100"
-                }`}>
-                  {grid[r][c] !== null ? FRUITS[grid[r][c] as number] : ""}
-                </div>
-              ))}
-            </button>
-          ))}
-        </div>
+      <canvas
+        ref={canvasRef} width={CW} height={CH}
+        className="w-full rounded-2xl touch-none cursor-crosshair border border-amber-200 shadow-sm"
+        onPointerMove={onMove}
+        onPointerDown={onDown}
+      />
+
+      {/* 과일 진화표 */}
+      <div className="flex items-center justify-center gap-1 flex-wrap">
+        {FRUIT_DATA.map((f, i) => (
+          <div key={i} className="flex items-center gap-0.5">
+            <span className="text-[16px]" title={f.label}>{f.emoji}</span>
+            {i < FRUIT_DATA.length - 1 && <span className="text-[10px] text-gray-300">→</span>}
+          </div>
+        ))}
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-gray-400 flex-1">
-          열을 탭해 과일을 떨어뜨리세요. 같은 과일끼리 붙으면 합쳐져요!
-          &nbsp;🍒→🍓→🍋→🍊→🍎→🍑→🍇→🍉
-        </p>
+        <p className="text-[11px] text-gray-400">탭해서 과일 떨어뜨리기. 같은 과일 만나면 합체!</p>
         {!over && (
           <button type="button" onClick={restart}
             className="flex-shrink-0 flex items-center gap-1 text-xs text-gray-400 bg-gray-100 rounded-xl px-2.5 py-1.5">

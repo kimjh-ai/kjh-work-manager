@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   await redis.set(key, JSON.stringify(messages.slice(-MAX)));
 
   try {
-    await sendPush(`💬 ${name}`, text.trim().slice(0, 40), "chat");
+    await sendPush(`💬 ${name}`, text.trim().slice(0, 40), "chat", imageUrl ?? undefined);
   } catch { /* no-op */ }
 
   return NextResponse.json({ ok: true });

@@ -34,7 +34,8 @@ export async function POST(req: NextRequest) {
     await sendPush(
       `📋 ${author}님이 글을 올렸어요`,
       preview ? `${title} — ${preview}` : title,
-      "board"
+      "board",
+      authorImage ?? undefined
     );
   } catch { /* no-op */ }
 

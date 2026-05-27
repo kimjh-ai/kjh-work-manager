@@ -4,12 +4,12 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title ?? "🚨 집합!", {
       body: data.body ?? "",
-      icon: "/icon-192.png",
+      icon: data.icon || "/icon-192.png",   // 발신자 프로필 사진 우선
       badge: "/icon-192.png",
       vibrate: [200, 100, 200, 100, 200],
       tag: "gather",
       renotify: true,
-      requireInteraction: true,
+      requireInteraction: false,            // 자동으로 사라짐
     })
   );
 });
