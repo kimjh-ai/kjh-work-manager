@@ -146,8 +146,9 @@ function SuikaGame({ playerName }: { playerName: string }) {
       hl.addColorStop(1, "rgba(255,255,255,0)");
       ctx.beginPath(); ctx.arc(b.x, b.y, fd.r, 0, Math.PI * 2);
       ctx.fillStyle = hl; ctx.fill();
-      /* 이모지 */
-      ctx.font = `${fd.r * 1.25}px serif`;
+      /* 이모지 — fillStyle 반드시 불투명 색으로 리셋 후 렌더링 */
+      ctx.fillStyle = "rgba(0,0,0,0.82)";
+      ctx.font = `${fd.r * 1.3}px serif`;
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(fd.emoji, b.x, b.y + 1);
     }
