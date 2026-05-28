@@ -53,9 +53,10 @@ export async function POST(req: NextRequest) {
       const call = JSON.parse(raw);
       const locationEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
       const emoji = locationEmoji[call.location] ?? "📍";
+      const renotifier = body.name ?? call.calledBy;
       await sendPush(
         `🔔 집합 재알림! ${emoji} ${call.location}`,
-        `아직 응답 안 하신 분들 확인해주세요! - ${call.calledBy}`,
+        `아직 응답 안 하신 분들 확인해주세요! - ${renotifier}`,
         "gather",
         body.imageUrl ?? undefined
       );

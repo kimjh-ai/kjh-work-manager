@@ -185,7 +185,7 @@ export default function GatheringPage() {
 
   const renotify = async () => {
     setRenotifying(true);
-    try { await fetch("/api/gather", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "renotify" }) }); }
+    try { await fetch("/api/gather", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "renotify", name: myName, imageUrl: myImage }) }); }
     finally { setRenotifying(false); }
   };
 
