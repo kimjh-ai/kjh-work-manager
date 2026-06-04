@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { LayoutDashboard, Gamepad2, MessageSquare, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, Gamepad2, MessageCircle, MoreHorizontal } from "lucide-react";
 
 const navItems = [
   { href: "/",      icon: LayoutDashboard, label: "홈" },
   { href: "/games", icon: Gamepad2,        label: "게임" },
-  { href: "/board", icon: MessageSquare,   label: "게시판" },
+  { href: "/dm",    icon: MessageCircle,   label: "메시지" },
   { href: "/more",  icon: MoreHorizontal,  label: "더보기" },
 ];
 

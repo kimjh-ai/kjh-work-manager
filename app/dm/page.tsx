@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Send } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Send, ClipboardList } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -52,6 +53,7 @@ export default function DmPage() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [inbox, setInbox] = useState<InboxEntry[]>([]);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
+  const [onlineNames, setOnlineNames] = useState<Set<string>>(new Set());
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -63,6 +65,18 @@ export default function DmPage() {
 
   useEffect(() => {
     fetch("/api/profiles").then(r => r.json()).then(d => setProfiles(d.profiles ?? {})).catch(() => {});
+  }, []);
+
+  // 온라인 상태 폴링
+  useEffect(() => {
+    const load = () => {
+      fetch("/api/online").then(r => r.json()).then(d => {
+        setOnlineNames(new Set((d.users ?? []).map((u: { name: string }) => u.name)));
+      }).catch(() => {});
+    };
+    load();
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
   }, []);
 
   const loadInbox = useCallback(() => {
@@ -192,7 +206,7 @@ export default function DmPage() {
         </div>
 
         <div className="px-3 pt-5 pb-4 space-y-7">
-          {/* 토픽 */}
+          {/* 토픽 + 게시판 */}
           <div>
             <p className="text-[11px] font-bold tracking-widest uppercase px-2 mb-2" style={{ color: "rgba(255,255,255,0.35)" }}>
               토픽
@@ -206,6 +220,13 @@ export default function DmPage() {
                   <span className="text-[14px] font-medium"># {topic.name}</span>
                 </button>
               ))}
+              {/* 게시판 바로가기 */}
+              <Link href="/board"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors active:bg-white/10"
+                style={{ color: "rgba(255,255,255,0.65)" }}>
+                <ClipboardList size={17} className="w-6 flex-shrink-0" />
+                <span className="text-[14px] font-medium">게시판</span>
+              </Link>
             </div>
           </div>
 
@@ -222,13 +243,14 @@ export default function DmPage() {
               ) : userList.map(({ name, imageUrl }) => {
                 const entry = inbox.find(e => e.partnerName === name);
                 const unread = entry?.unread ?? 0;
+                const isOnline = onlineNames.has(name);
                 return (
                   <button key={name} onClick={() => openDm(name, imageUrl)}
                     className="w-full flex items-center gap-3 px-2 py-2.5 rounded-xl transition-colors active:bg-white/10">
                     <div className="relative flex-shrink-0">
                       <Avatar imageUrl={imageUrl} name={name} size={36} />
                       <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full ring-2 ring-[#1a1d2e]"
-                        style={{ background: "#4ade80" }} />
+                        style={{ background: isOnline ? "#4ade80" : "#6b7280" }} />
                     </div>
                     <div className="flex-1 min-w-0 text-left">
                       <p className="text-[14px] font-medium truncate"
