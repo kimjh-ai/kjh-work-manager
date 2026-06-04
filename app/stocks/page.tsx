@@ -9,7 +9,7 @@ import { WatchlistItem } from "@/lib/types";
 /* ── 타입 ── */
 interface StockData {
   symbol: string; name: string; price: number; change: number;
-  changePercent: number; marketStatus?: string;
+  changePercent: number; marketStatus?: string; currency?: string;
   preMarket?: { price: number; change: number; changePercent: number; session: string } | null;
 }
 interface CoinData { id: string; symbol: string; name: string; price: number; changePercent: number }
@@ -26,6 +26,11 @@ function StockRow({ stock, watchlist, onToggle }: { stock: StockData; watchlist:
   const Icon = up ? TrendingUp : down ? TrendingDown : Minus;
   const cls = up ? "up" : down ? "down" : "flat";
   const inWatch = watchlist.some((w) => w.symbol === stock.symbol);
+  const isUSD = stock.currency === "USD";
+  const pm = stock.preMarket;
+  const pmUp = pm && pm.change > 0; const pmDown = pm && pm.change < 0;
+  const pmCls = pmUp ? "text-red-400" : pmDown ? "text-blue-400" : "text-gray-400";
+
   return (
     <div className="flex items-center justify-between py-3 border-b border-gray-50 last:border-0">
       <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -38,15 +43,32 @@ function StockRow({ stock, watchlist, onToggle }: { stock: StockData; watchlist:
           <div className="flex items-center gap-1">
             <p className="text-[12px] text-gray-400">{stock.symbol}</p>
             {stock.marketStatus === "PREOPEN" && <span className="text-[10px] bg-orange-100 text-orange-600 px-1 rounded">프리장</span>}
-            {stock.marketStatus === "CLOSE" && <span className="text-[10px] bg-gray-100 text-gray-500 px-1 rounded">장마감</span>}
+            {(stock.marketStatus === "CLOSE" || stock.marketStatus === "CLOSED") && <span className="text-[10px] bg-gray-100 text-gray-500 px-1 rounded">장마감</span>}
+            {stock.marketStatus === "POST"   && <span className="text-[10px] bg-purple-50 text-purple-500 px-1 rounded">시장외</span>}
+            {stock.marketStatus === "PRE"    && <span className="text-[10px] bg-orange-50 text-orange-500 px-1 rounded">프리마켓</span>}
           </div>
         </div>
       </div>
       <div className="text-right flex-shrink-0">
-        <p className={`text-[14px] font-semibold ${cls}`}>{stock.price.toLocaleString()}<span className="text-[12px] font-normal ml-0.5">원</span></p>
+        <p className={`text-[14px] font-semibold ${cls}`}>
+          {isUSD ? `$${stock.price.toFixed(2)}` : stock.price.toLocaleString()}
+          {!isUSD && <span className="text-[12px] font-normal ml-0.5">원</span>}
+        </p>
         <div className={`flex items-center justify-end gap-0.5 text-[12px] ${cls}`}>
           <Icon size={11} /><span>{up ? "+" : ""}{stock.changePercent.toFixed(2)}%</span>
         </div>
+        {/* 시간외/프리장 표시 */}
+        {pm && (
+          <div className="flex items-center justify-end gap-1 mt-0.5">
+            <span className="text-[10px] bg-orange-50 text-orange-500 font-bold px-1 rounded">
+              {pm.session === "BEFORE_MARKET" ? "프리장" : "시간외"}
+            </span>
+            <span className={`text-[11px] ${pmCls}`}>
+              {isUSD ? `$${pm.price.toFixed(2)}` : pm.price.toLocaleString()}
+              <span className="ml-0.5">({pm.change >= 0 ? "+" : ""}{pm.changePercent.toFixed(2)}%)</span>
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -99,6 +121,9 @@ export default function StocksPage() {
 
   // 주식
   const [popular, setPopular] = useState<StockData[]>([]);
+  const [usStocks, setUsStocks] = useState<StockData[]>([]);
+  const [usLoading, setUsLoading] = useState(true);
+  const [usUpdatedAt, setUsUpdatedAt] = useState("");
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [watchStocks, setWatchStocks] = useState<StockData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -119,6 +144,16 @@ export default function StocksPage() {
   const [coinSearchData, setCoinSearchData] = useState<CoinData[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* 미국 주식 로드 */
+  const loadUsStocks = useCallback(async () => {
+    setUsLoading(true);
+    try {
+      const res = await fetch("/api/stocks?type=us");
+      setUsStocks((await res.json()).stocks ?? []);
+    } catch { /* no-op */ }
+    finally { setUsLoading(false); setUsUpdatedAt(format(new Date(), "HH:mm:ss")); }
+  }, []);
 
   /* 주식 로드 */
   const loadStocks = useCallback(async () => {
@@ -159,7 +194,7 @@ export default function StocksPage() {
     } catch { /* no-op */ }
   }, [userId]);
 
-  useEffect(() => { loadStocks(); loadCoins(); }, [loadStocks, loadCoins]);
+  useEffect(() => { loadStocks(); loadCoins(); loadUsStocks(); }, [loadStocks, loadCoins, loadUsStocks]);
   useEffect(() => { if (isLoaded && userId) loadCoinWatch(); }, [isLoaded, userId, loadCoinWatch]);
 
   /* 관심 코인 가격 갱신 */
@@ -252,8 +287,8 @@ export default function StocksPage() {
             <h1 className="text-[22px] font-bold text-gray-900">📈 주식 & 코인</h1>
             <p className="text-[13px] text-gray-400 mt-1">실시간 시세 조회</p>
           </div>
-          <button type="button" onClick={() => { loadStocks(); loadCoins(); }} aria-label="새로고침"
-            className={`text-gray-400 hover:text-blue-500 transition-colors ${loading || coinLoading ? "animate-spin" : ""}`}>
+          <button type="button" onClick={() => { loadStocks(); loadCoins(); loadUsStocks(); }} aria-label="새로고침"
+            className={`text-gray-400 hover:text-blue-500 transition-colors ${loading || coinLoading || usLoading ? "animate-spin" : ""}`}>
             <RefreshCw size={18} />
           </button>
         </div>
@@ -284,6 +319,23 @@ export default function StocksPage() {
                     {popular.map((s) => <StockRow key={s.symbol} stock={s} watchlist={watchlist} onToggle={toggleStockWatch} />)}
                     {updatedAt && <p className="text-[11px] text-gray-400 text-center py-2">{updatedAt} 기준 · ★ 터치로 관심 추가</p>}
                   </>
+                )}
+              </div>
+            </div>
+
+            {/* 미국주식 섹션 */}
+            <div>
+              <div className="flex items-center justify-between px-1 mb-2">
+                <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase">🇺🇸 미국 주식</p>
+                {usUpdatedAt && <p className="text-[11px] text-gray-400">{usUpdatedAt} 기준</p>}
+              </div>
+              <div className="bg-white rounded-2xl shadow-sm px-4">
+                {usLoading ? (
+                  <div className="flex items-center justify-center py-10"><div className="w-7 h-7 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
+                ) : usStocks.length === 0 ? (
+                  <p className="text-[13px] text-gray-400 text-center py-8">데이터를 불러올 수 없어요</p>
+                ) : (
+                  usStocks.map((s) => <StockRow key={s.symbol} stock={s} watchlist={watchlist} onToggle={toggleStockWatch} />)
                 )}
               </div>
             </div>

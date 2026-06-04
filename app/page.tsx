@@ -15,7 +15,10 @@ import { getTodos, saveTodos } from "@/lib/storage";
 import { Todo } from "@/lib/types";
 import Avatar from "@/components/Avatar";
 
-interface StockData { symbol: string; name: string; price: number; change: number; changePercent: number }
+interface StockData {
+  symbol: string; name: string; price: number; change: number; changePercent: number; currency?: string;
+  preMarket?: { price: number; change: number; changePercent: number; session: string } | null;
+}
 interface OnlineUser { name: string; imageUrl: string | null }
 interface Notice { id: string; title: string; content: string; author: string; important: boolean; createdAt: string }
 interface Birthday { name: string; month: number; day: number; imageUrl: string | null }
@@ -385,14 +388,29 @@ export default function Dashboard() {
                 const up = s.change > 0; const down = s.change < 0;
                 const Icon = up ? TrendingUp : down ? TrendingDown : Minus;
                 const cls = up ? "up" : down ? "down" : "flat";
+                const isUSD = s.currency === "USD";
+                const pm = s.preMarket;
+                const pmUp = pm && pm.change > 0;
                 return (
                   <div key={s.symbol} className="flex items-center justify-between py-1.5">
                     <p className="text-[14px] text-gray-800 font-medium">{s.name}</p>
                     <div className="text-right">
-                      <span className={`text-[14px] font-semibold ${cls}`}>{s.price.toLocaleString()}</span>
+                      <span className={`text-[14px] font-semibold ${cls}`}>
+                        {isUSD ? `$${s.price.toFixed(2)}` : s.price.toLocaleString()}
+                      </span>
                       <div className={`flex items-center justify-end gap-0.5 text-[12px] ${cls}`}>
                         <Icon size={10} /><span>{up ? "+" : ""}{s.changePercent.toFixed(2)}%</span>
                       </div>
+                      {pm && (
+                        <div className="flex items-center justify-end gap-1 mt-0.5">
+                          <span className="text-[9px] bg-orange-50 text-orange-500 font-bold px-1 rounded">
+                            {pm.session === "BEFORE_MARKET" ? "프리" : "시간외"}
+                          </span>
+                          <span className={`text-[10px] ${pmUp ? "text-red-400" : "text-blue-400"}`}>
+                            {pm.change >= 0 ? "+" : ""}{pm.changePercent.toFixed(2)}%
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
