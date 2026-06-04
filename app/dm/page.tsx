@@ -10,10 +10,11 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 
 const TOPICS = [
-  { id: "general", name: "전체",   emoji: "💬" },
-  { id: "work",    name: "업무",   emoji: "💼" },
-  { id: "daily",   name: "일상",   emoji: "☀️" },
-  { id: "lunch",   name: "점심",   emoji: "🍽️" },
+  { id: "teamchat", name: "팀채팅",  emoji: "🗣️" },
+  { id: "general",  name: "전체",    emoji: "💬" },
+  { id: "work",     name: "업무",    emoji: "💼" },
+  { id: "daily",    name: "일상",    emoji: "☀️" },
+  { id: "lunch",    name: "점심",    emoji: "🍽️" },
 ];
 
 interface ChatMsg {
@@ -94,12 +95,20 @@ export default function DmPage() {
 
   const loadMessages = useCallback(async () => {
     if (!target) return;
-    const url = target.type === "topic"
-      ? `/api/topic?topicId=${encodeURIComponent(target.topicId)}`
-      : `/api/dm?roomId=${encodeURIComponent(target.roomId)}`;
     try {
-      const d = await fetch(url).then(r => r.json());
-      setMessages(d.messages ?? []);
+      if (target.type === "topic" && target.topicId === "teamchat") {
+        const d = await fetch("/api/team-chat").then(r => r.json());
+        // team-chat 포맷(name/imageUrl) → ChatMsg 포맷(from/fromImage) 변환
+        setMessages((d.messages ?? []).map((m: { id: string; name: string; imageUrl: string | null; text: string; createdAt: string }) => ({
+          id: m.id, from: m.name, fromImage: m.imageUrl, text: m.text, createdAt: m.createdAt,
+        })));
+      } else {
+        const url = target.type === "topic"
+          ? `/api/topic?topicId=${encodeURIComponent(target.topicId)}`
+          : `/api/dm?roomId=${encodeURIComponent(target.roomId)}`;
+        const d = await fetch(url).then(r => r.json());
+        setMessages(d.messages ?? []);
+      }
     } catch { /* no-op */ }
   }, [target]);
 
@@ -157,7 +166,13 @@ export default function DmPage() {
     }]);
 
     try {
-      if (target.type === "topic") {
+      if (target.type === "topic" && target.topicId === "teamchat") {
+        await fetch("/api/team-chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: myName, imageUrl: myImage, text }),
+        });
+      } else if (target.type === "topic") {
         await fetch("/api/topic", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -1,22 +1,12 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Plus, Trash2, X, MessageCircle, Heart, Send, ChevronDown } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import Avatar from "@/components/Avatar";
-
-interface TeamChatMessage {
-  id: string;
-  name: string;
-  imageUrl: string | null;
-  text: string;
-  createdAt: string;
-}
-
-type BoardTab = "posts" | "chat";
 
 interface Comment {
   id: string;
@@ -48,11 +38,6 @@ export default function BoardPage() {
   const [openComments, setOpenComments] = useState<Set<string>>(new Set());
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
   const [profiles, setProfiles] = useState<Record<string, string>>({});
-  const [boardTab, setBoardTab] = useState<BoardTab>("posts");
-  const [chatMessages, setChatMessages] = useState<TeamChatMessage[]>([]);
-  const [chatText, setChatText] = useState("");
-  const [chatSending, setChatSending] = useState(false);
-  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const admin = isAdmin(email);
@@ -75,40 +60,10 @@ export default function BoardPage() {
     finally { setLoading(false); }
   };
 
-  const loadChat = async () => {
-    try {
-      const res = await fetch("/api/team-chat");
-      const data = await res.json();
-      setChatMessages(data.messages ?? []);
-    } catch { /* no-op */ }
-  };
-
-  const sendChat = async () => {
-    if (!chatText.trim() || chatSending) return;
-    setChatSending(true);
-    const text = chatText.trim();
-    setChatText("");
-    try {
-      await fetch("/api/team-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: myName, imageUrl: myImage, text }),
-      });
-      await loadChat();
-    } finally { setChatSending(false); }
-  };
-
   useEffect(() => {
     if (!isLoaded) return;
     load();
-    loadChat();
-    const chatInterval = setInterval(loadChat, 5000);
-    return () => clearInterval(chatInterval);
   }, [isLoaded]);
-
-  useEffect(() => {
-    if (boardTab === "chat") chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages, boardTab]);
 
   const submit = async () => {
     if (!title.trim() || saving) return;
@@ -175,89 +130,21 @@ export default function BoardPage() {
   return (
     <div className="min-h-screen bg-[#f8f9fa]">
       {/* 헤더 */}
-      <div className="bg-white px-5 pt-14 pb-0 border-b border-gray-100">
-        <div className="flex items-center justify-between mb-3">
+      <div className="bg-white px-5 pt-14 pb-4 border-b border-gray-100">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-[22px] font-bold text-gray-900">
-              {boardTab === "posts" ? "📋 게시판" : "💬 팀 채팅"}
-            </h1>
-            <p className="text-[13px] text-gray-400 mt-0.5">
-              {boardTab === "posts" ? "팀원들과 자유롭게 소통해요" : "자유롭게 대화해요"}
-            </p>
+            <h1 className="text-[22px] font-bold text-gray-900">📋 게시판</h1>
+            <p className="text-[13px] text-gray-400 mt-0.5">팀원들과 자유롭게 소통해요</p>
           </div>
-          {boardTab === "posts" && (
-            <button type="button" onClick={() => setShowForm(!showForm)}
-              className="flex items-center gap-1.5 bg-blue-500 text-white rounded-2xl px-3.5 py-2 text-[13px] font-semibold">
-              <Plus size={15} /> 글쓰기
-            </button>
-          )}
-        </div>
-        {/* 탭 */}
-        <div className="flex gap-0">
-          {([["posts", "📋 게시판"], ["chat", "💬 팀 채팅"]] as [BoardTab, string][]).map(([key, label]) => (
-            <button key={key} type="button" onClick={() => setBoardTab(key)}
-              className={`flex-1 py-2.5 text-[14px] font-semibold border-b-2 transition-colors ${
-                boardTab === key
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-400"
-              }`}>
-              {label}
-            </button>
-          ))}
+          <button type="button" onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-1.5 bg-blue-500 text-white rounded-2xl px-3.5 py-2 text-[13px] font-semibold">
+            <Plus size={15} /> 글쓰기
+          </button>
         </div>
       </div>
 
-      {/* ── 팀 채팅 탭 ── */}
-      {boardTab === "chat" && (
-        <div className="flex flex-col chat-panel-height">
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            {chatMessages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-center">
-                <p className="text-4xl mb-2">💬</p>
-                <p className="text-[14px] text-gray-400">팀원들과 자유롭게 대화해보세요</p>
-                <p className="text-[12px] text-gray-300 mt-1">첫 메시지를 남겨보세요</p>
-              </div>
-            )}
-            {chatMessages.map((msg) => {
-              const isMine = msg.name === myName;
-              return (
-                <div key={msg.id} className={`flex items-end gap-2 ${isMine ? "flex-row-reverse" : "flex-row"}`}>
-                  {!isMine && <Avatar imageUrl={msg.imageUrl} name={msg.name} size={32} />}
-                  <div className={`max-w-[75%] flex flex-col gap-0.5 ${isMine ? "items-end" : "items-start"}`}>
-                    {!isMine && <p className="text-[11px] text-gray-400 px-1">{msg.name}</p>}
-                    <div className={`px-3.5 py-2.5 rounded-2xl text-[14px] leading-relaxed ${
-                      isMine ? "bg-blue-500 text-white rounded-br-sm" : "bg-white text-gray-800 rounded-bl-sm shadow-sm"
-                    }`}>
-                      {msg.text}
-                    </div>
-                    <p className="text-[10px] text-gray-300 px-1">{format(new Date(msg.createdAt), "HH:mm")}</p>
-                  </div>
-                </div>
-              );
-            })}
-            <div ref={chatBottomRef} />
-          </div>
-          {/* 입력창 */}
-          <div className="border-t border-gray-100 bg-white flex items-center gap-2 px-4 py-3">
-            <Avatar imageUrl={myImage} name={myName} size={32} />
-            <input
-              value={chatText}
-              onChange={(e) => setChatText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
-              placeholder="메시지 입력..."
-              className="flex-1 bg-gray-100 rounded-2xl px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400"
-            />
-            <button type="button" onClick={sendChat} disabled={chatSending || !chatText.trim()}
-              aria-label="전송" title="전송"
-              className="w-10 h-10 bg-blue-500 text-white rounded-2xl flex items-center justify-center flex-shrink-0 disabled:opacity-40">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── 게시판 탭 ── */}
-      {boardTab === "posts" && <div className="px-4 py-4 space-y-3">
+      {/* ── 게시판 ── */}
+      <div className="px-4 py-4 space-y-3">
         {/* 작성 폼 */}
         {showForm && (
           <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
@@ -395,7 +282,7 @@ export default function BoardPage() {
             );
           })
         )}
-      </div>}
+      </div>
     </div>
   );
 }
