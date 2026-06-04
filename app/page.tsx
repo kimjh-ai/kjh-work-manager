@@ -8,7 +8,7 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import {
   CheckCircle2, Circle, TrendingUp, TrendingDown, Minus,
-  AlertTriangle, ChevronRight, Users, MessageSquare,
+  AlertTriangle, ChevronRight, Users, MessageSquare, MessageCircle,
   Pin, RefreshCw,
 } from "lucide-react";
 import { getTodos, saveTodos } from "@/lib/storage";
@@ -402,19 +402,26 @@ export default function Dashboard() {
         </div>
 
         {/* 팀 바로가기 */}
-        <div className="grid grid-cols-2 gap-2">
-          <Link href="/gathering" className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 active:bg-gray-50">
-            <Users size={20} className="text-red-500" />
+        <div className="grid grid-cols-3 gap-2">
+          <Link href="/gathering" className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-2.5 active:bg-gray-50">
+            <Users size={18} className="text-red-500 flex-shrink-0" />
             <div>
-              <p className="text-[14px] font-semibold text-gray-800">집합</p>
-              <p className="text-[12px] text-gray-400">팀 채팅 · 현황</p>
+              <p className="text-[13px] font-semibold text-gray-800">집합</p>
+              <p className="text-[11px] text-gray-400">팀 채팅</p>
             </div>
           </Link>
-          <Link href="/board" className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-3 active:bg-gray-50">
-            <MessageSquare size={20} className="text-blue-500" />
+          <Link href="/dm" className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-2.5 active:bg-gray-50">
+            <MessageCircle size={18} className="text-indigo-500 flex-shrink-0" />
             <div>
-              <p className="text-[14px] font-semibold text-gray-800">게시판</p>
-              <p className="text-[12px] text-gray-400">자유 소통</p>
+              <p className="text-[13px] font-semibold text-gray-800">메시지</p>
+              <p className="text-[11px] text-gray-400">1:1 DM</p>
+            </div>
+          </Link>
+          <Link href="/board" className="bg-white rounded-2xl shadow-sm p-4 flex items-center gap-2.5 active:bg-gray-50">
+            <MessageSquare size={18} className="text-blue-500 flex-shrink-0" />
+            <div>
+              <p className="text-[13px] font-semibold text-gray-800">게시판</p>
+              <p className="text-[11px] text-gray-400">자유 소통</p>
             </div>
           </Link>
         </div>

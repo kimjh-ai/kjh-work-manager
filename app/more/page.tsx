@@ -9,7 +9,7 @@ import {
   Bell, BellOff, Download, LogOut, User,
   ChevronDown, ChevronRight,
   Briefcase, CalendarDays, Calculator,
-  Link2, MessageSquareWarning, AlertTriangle, Calendar,
+  Link2, MessageSquareWarning, AlertTriangle, Calendar, MessageCircle,
 } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
 import { registerPush, unregisterPush } from "@/components/PushSubscriber";
@@ -22,10 +22,12 @@ const NOTIF_TYPES: { type: NotifType; label: string; desc: string }[] = [
   { type: "checkin", label: "체크인 응답", desc: "팀원 응답 알림" },
   { type: "chat",    label: "채팅",       desc: "집합 채팅 메시지" },
   { type: "board",   label: "게시판",     desc: "새 글 등록 알림" },
+  { type: "dm",      label: "1:1 메시지", desc: "다이렉트 메시지 알림" },
 ];
 
 /* 그리드 아이템 (2열) */
 const TEAM_GRID = [
+  { href: "/dm",          icon: MessageCircle,        label: "메시지",    color: "text-indigo-500", bg: "bg-indigo-50" },
   { href: "/notice",      icon: AlertTriangle,        label: "팀 공지",   color: "text-orange-500", bg: "bg-orange-50" },
   { href: "/birthday",    icon: Calendar,             label: "생일 달력", color: "text-pink-500",   bg: "bg-pink-50"   },
   { href: "/links",       icon: Link2,                label: "팀 링크",   color: "text-blue-500",   bg: "bg-blue-50"   },
@@ -85,7 +87,7 @@ export default function MorePage() {
   const [notifStatus, setNotifStatus] = useState<NotifStatus>("unknown");
   const [notifLoading, setNotifLoading] = useState(false);
   const [pushEndpoint, setPushEndpoint] = useState<string | null>(null);
-  const [prefs, setPrefs] = useState<NotifPrefs>({ gather: true, checkin: true, chat: true, board: true });
+  const [prefs, setPrefs] = useState<NotifPrefs>({ gather: true, checkin: true, chat: true, board: true, dm: true });
   const [prefLoading, setPrefLoading] = useState<NotifType | null>(null);
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";

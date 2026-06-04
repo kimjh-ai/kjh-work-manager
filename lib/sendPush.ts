@@ -1,13 +1,14 @@
 import webpush from "web-push";
 import redis from "@/lib/redis";
 
-export type NotifType = "gather" | "checkin" | "chat" | "board";
+export type NotifType = "gather" | "checkin" | "chat" | "board" | "dm";
 
 export interface NotifPrefs {
   gather: boolean;
   checkin: boolean;
   chat: boolean;
   board: boolean;
+  dm: boolean;
 }
 
 export interface StoredSub {
@@ -15,9 +16,10 @@ export interface StoredSub {
   keys: { p256dh: string; auth: string };
   expirationTime?: number | null;
   prefs?: NotifPrefs;
+  username?: string;
 }
 
-export const DEFAULT_PREFS: NotifPrefs = { gather: true, checkin: true, chat: true, board: true };
+export const DEFAULT_PREFS: NotifPrefs = { gather: true, checkin: true, chat: true, board: true, dm: true };
 
 export const SUB_KEY = "push:subscriptions";
 
@@ -43,6 +45,40 @@ export async function sendPush(title: string, body: string, type: NotifType, ico
   );
 
   // 만료된 구독(410) 제거
+  const expiredEndpoints = new Set(
+    targets
+      .filter((_, i) => {
+        const r = results[i];
+        return r.status === "rejected" && (r.reason as { statusCode?: number })?.statusCode === 410;
+      })
+      .map((s) => s.endpoint)
+  );
+  if (expiredEndpoints.size > 0) {
+    await redis.set(SUB_KEY, JSON.stringify(subs.filter((s) => !expiredEndpoints.has(s.endpoint))));
+  }
+}
+
+export async function sendDmPush(title: string, body: string, toUsername: string, icon?: string): Promise<void> {
+  const vKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const vPriv = process.env.VAPID_PRIVATE_KEY;
+  const vEmail = process.env.VAPID_EMAIL;
+  if (!vKey || !vPriv || !vEmail) return;
+
+  webpush.setVapidDetails(vEmail, vKey, vPriv);
+  const subRaw = await redis.get(SUB_KEY);
+  const subs: StoredSub[] = subRaw ? JSON.parse(subRaw) : [];
+
+  const targets = subs.filter((s) => {
+    if (s.username !== toUsername) return false;
+    const prefs = s.prefs ?? DEFAULT_PREFS;
+    return prefs.dm !== false;
+  });
+
+  const payload = JSON.stringify({ title, body, icon: icon ?? null });
+  const results = await Promise.allSettled(
+    targets.map((sub) => webpush.sendNotification(sub as unknown as webpush.PushSubscription, payload))
+  );
+
   const expiredEndpoints = new Set(
     targets
       .filter((_, i) => {

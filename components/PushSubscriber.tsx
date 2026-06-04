@@ -10,11 +10,12 @@ function urlBase64ToUint8Array(base64String: string) {
   return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
 }
 
-async function saveSubscription(sub: PushSubscription) {
+async function saveSubscription(sub: PushSubscription, username?: string) {
+  const subObj = sub.toJSON();
   await fetch("/api/push", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(sub),
+    body: JSON.stringify({ ...subObj, username }),
   });
 }
 
@@ -33,7 +34,7 @@ export async function unregisterPush(): Promise<void> {
   } catch { /* no-op */ }
 }
 
-export async function registerPush(): Promise<"granted" | "denied" | "unsupported"> {
+export async function registerPush(username?: string): Promise<"granted" | "denied" | "unsupported"> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return "unsupported";
 
   try {
@@ -53,7 +54,7 @@ export async function registerPush(): Promise<"granted" | "denied" | "unsupporte
       });
     }
     // 항상 Redis에 재저장 (Redis 초기화 대비)
-    await saveSubscription(sub);
+    await saveSubscription(sub, username);
     return "granted";
   } catch {
     return "denied";
@@ -80,7 +81,7 @@ export default function PushSubscriber() {
 
     // 자동 등록 시도 (이미 권한 있으면 조용히 구독 갱신)
     if (Notification.permission === "granted") {
-      registerPush().catch(() => {});
+      registerPush(name).catch(() => {});
     }
 
     // 온라인 하트비트 — 30초마다 lastSeen 갱신
