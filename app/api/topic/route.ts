@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import redis from "@/lib/redis";
+import { sendPush } from "@/lib/sendPush";
 
 export const runtime = "nodejs";
 
@@ -92,6 +93,9 @@ export async function POST(req: NextRequest) {
   await redis.set(key(topicId), JSON.stringify(msgs.slice(-MAX)));
 
   try { await incrementUnread(topicId, name); } catch { /* no-op */ }
+
+  const topicLabel: Record<string, string> = { general: "전체", work: "업무", daily: "일상", lunch: "점심" };
+  try { await sendPush(`💬 ${name} · #${topicLabel[topicId] ?? topicId}`, text.trim().slice(0, 50), "chat"); } catch { /* no-op */ }
 
   return NextResponse.json({ ok: true });
 }
