@@ -9,8 +9,9 @@ const MAX_MSGS = 200;
 function roomId(a: string, b: string) {
   return [a, b].sort().join("|||");
 }
-function msgsKey(rid: string) { return `dm:msgs:${rid}`; }
-function inboxKey(u: string)  { return `dm:inbox:${u}`; }
+function msgsKey(rid: string)   { return `dm:msgs:${rid}`; }
+function inboxKey(u: string)    { return `dm:inbox:${u}`; }
+function readsKey(rid: string)  { return `dm:reads:${rid}`; }
 
 interface DmMessage {
   id: string;
@@ -49,13 +50,27 @@ async function updateInbox(
 
 export async function GET(req: NextRequest) {
   const rid = req.nextUrl.searchParams.get("roomId");
-  if (!rid) return NextResponse.json({ messages: [] });
+  if (!rid) return NextResponse.json({ messages: [], reads: {} });
   try {
-    const raw = await redis.get(msgsKey(rid));
-    return NextResponse.json({ messages: raw ? JSON.parse(raw) : [] });
+    const [rawMsgs, rawReads] = await Promise.all([redis.get(msgsKey(rid)), redis.get(readsKey(rid))]);
+    return NextResponse.json({
+      messages: rawMsgs ? JSON.parse(rawMsgs) : [],
+      reads: rawReads ? JSON.parse(rawReads) : {},
+    });
   } catch {
-    return NextResponse.json({ messages: [] });
+    return NextResponse.json({ messages: [], reads: {} });
   }
+}
+
+export async function PATCH(req: NextRequest) {
+  const { roomId: rid, user, readAt } = await req.json();
+  if (!rid || !user) return NextResponse.json({ ok: false });
+  const key = readsKey(rid);
+  const raw = await redis.get(key);
+  const reads: Record<string, string> = raw ? JSON.parse(raw) : {};
+  reads[user] = readAt ?? new Date().toISOString();
+  await redis.set(key, JSON.stringify(reads));
+  return NextResponse.json({ ok: true });
 }
 
 export async function POST(req: NextRequest) {
