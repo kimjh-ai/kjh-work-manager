@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { Plus, X, Shuffle, RotateCcw, ChevronLeft } from "lucide-react";
+import { sounds } from "@/lib/sounds";
 
 type GameTab = "suika" | "reaction" | "mole" | "ladder" | "random" | "oddeven" | "ranking";
 
@@ -201,6 +202,7 @@ function SuikaGame({ playerName }: { playerName: string }) {
       scoreRef.current += scoreDelta;
       setScore(scoreRef.current);
       setBest(prev => Math.max(prev, scoreRef.current));
+      toAdd.forEach(b => sounds.merge(b.type));
     }
 
     /* 원-원 충돌 해결 */
@@ -231,6 +233,7 @@ function SuikaGame({ playerName }: { playerName: string }) {
     if (ballsRef.current.some(b => b.age > 80 && b.y - FRUIT_DATA[b.type].r < DANGER_Y)) {
       overRef.current = true;
       setOver(true);
+      sounds.gameOver();
       if (!submittedRef.current && nameRef.current && scoreRef.current > 0) {
         submittedRef.current = true;
         fetch("/api/game-rank", {
@@ -250,6 +253,7 @@ function SuikaGame({ playerName }: { playerName: string }) {
     if (!canDropRef.current || overRef.current) return;
     const type = curTypeRef.current;
     const r = FRUIT_DATA[type].r;
+    sounds.drop();
     ballsRef.current.push({
       id: idRef.current++,
       x: Math.max(WALL + r, Math.min(CW - WALL - r, x)),

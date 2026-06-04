@@ -8,6 +8,7 @@ import { ArrowLeft, Send, ClipboardList, X } from "lucide-react";
 import Avatar from "@/components/Avatar";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import { sounds } from "@/lib/sounds";
 
 const TOPICS = [
   { id: "teamchat", name: "팀채팅", emoji: "🗣️" },
@@ -76,6 +77,7 @@ export default function DmPage() {
   const [imageModal, setImageModal] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastMsgIdRef = useRef<string>("");
 
   useEffect(() => {
     if (isLoaded && !user) router.replace("/sign-in");
@@ -157,7 +159,17 @@ export default function DmPage() {
           : `/api/dm?roomId=${encodeURIComponent(target.roomId)}`;
         d = await fetch(url).then(r => r.json());
       }
-      setMessages(d.messages ?? []);
+      const msgs: ChatMsg[] = d.messages ?? [];
+      // 새 메시지가 내가 아닌 사람 것이면 수신음
+      if (msgs.length > 0) {
+        const lastId = msgs[msgs.length - 1].id;
+        const lastFrom = msgs[msgs.length - 1].from;
+        if (lastId !== lastMsgIdRef.current && lastFrom !== myName && lastMsgIdRef.current !== "") {
+          sounds.receive();
+        }
+        lastMsgIdRef.current = lastId;
+      }
+      setMessages(msgs);
       setReads(prev => ({ ...d.reads, [myName]: prev[myName] ?? d.reads[myName] ?? "" }));
     } catch { /* no-op */ }
   }, [target, myName]);
@@ -184,6 +196,7 @@ export default function DmPage() {
   function openTopic(topic: typeof TOPICS[0]) {
     setTarget({ type: "topic", topicId: topic.id, name: topic.name, emoji: topic.emoji });
     setMessages([]); setReads({}); setInput("");
+    lastMsgIdRef.current = "";
     setView("chat");
     setTimeout(() => inputRef.current?.focus(), 100);
   }
@@ -192,6 +205,7 @@ export default function DmPage() {
     const roomId = [myName, partnerName].sort().join("|||");
     setTarget({ type: "dm", roomId, partnerName, partnerImage });
     setMessages([]); setReads({}); setInput("");
+    lastMsgIdRef.current = "";
     setView("chat");
     setTimeout(() => inputRef.current?.focus(), 100);
   }
@@ -201,6 +215,7 @@ export default function DmPage() {
     const text = input.trim();
     setInput("");
     setSending(true);
+    sounds.send();
     const now = new Date().toISOString();
     setMessages(prev => [...prev, { id: `opt_${Date.now()}`, from: myName, fromImage: myImage, text, createdAt: now }]);
     setReads(prev => ({ ...prev, [myName]: now }));

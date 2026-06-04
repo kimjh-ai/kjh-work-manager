@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
 import { Bell, X, BellOff, BellRing, Clock, RefreshCw, ChevronDown } from "lucide-react";
+import { sounds } from "@/lib/sounds";
 import { format } from "date-fns";
 import Avatar from "@/components/Avatar";
 import { registerPush } from "@/components/PushSubscriber";
@@ -171,6 +172,7 @@ export default function GatheringPage() {
   const callGather = async () => {
     if (saving) return;
     setSaving(true);
+    sounds.gather();
     try {
       await fetch("/api/gather", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ location: selectedLoc, message, calledBy: myName }) });
       setShowForm(false); setMessage(""); await poll();
@@ -192,6 +194,7 @@ export default function GatheringPage() {
   const submitCheckin = async (status: Status, r?: string) => {
     if (!call) return;
     setSaving(true);
+    sounds.checkin();
     try {
       await fetch("/api/gather", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "checkin", name: myName, imageUrl: myImage, status, reason: r ?? "" }) });
       setPendingStatus(null); setReason(""); setIsChanging(false); await poll();

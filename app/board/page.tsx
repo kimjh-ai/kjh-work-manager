@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { format } from "date-fns";
+import { sounds } from "@/lib/sounds";
 import { ko } from "date-fns/locale";
 import { Plus, Trash2, X, MessageCircle, Heart, Send, ChevronDown } from "lucide-react";
 import { isAdmin } from "@/lib/auth";
@@ -68,6 +69,7 @@ export default function BoardPage() {
   const submit = async () => {
     if (!title.trim() || saving) return;
     setSaving(true);
+    sounds.post();
     try {
       await fetch("/api/board", {
         method: "POST",
@@ -86,6 +88,7 @@ export default function BoardPage() {
   };
 
   const toggleLike = async (postId: string) => {
+    sounds.like();
     await fetch("/api/board", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
