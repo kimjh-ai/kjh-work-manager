@@ -70,8 +70,8 @@ export default function PushSubscriber() {
     const name = user.firstName ?? user.username ?? user.primaryEmailAddress?.emailAddress?.split("@")[0] ?? "";
     const imageUrl = user.imageUrl ?? null;
 
-    // 최신 프로필 사진 Redis에 저장 (게시판 소급 적용용)
-    if (name && imageUrl) {
+    // 사용자 등록 (사진 없어도 이름은 반드시 저장 — 멘션 기능용)
+    if (name) {
       fetch("/api/profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

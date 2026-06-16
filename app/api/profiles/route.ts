@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
 
   const raw = await redis.get(KEY);
   const profiles: Record<string, string> = raw ? JSON.parse(raw) : {};
-  if (imageUrl) profiles[name] = imageUrl;
+  profiles[name] = imageUrl ?? profiles[name] ?? "";
   await redis.set(KEY, JSON.stringify(profiles));
   return NextResponse.json({ ok: true });
 }

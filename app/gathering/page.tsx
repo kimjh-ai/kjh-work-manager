@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useUser } from "@clerk/nextjs";
 import { Bell, X, BellOff, BellRing, Clock, RefreshCw, ChevronDown } from "lucide-react";
 import { sounds } from "@/lib/sounds";
@@ -12,6 +12,16 @@ import CoffeeRunCard from "@/components/today/CoffeeRunCard";
 import VoteCard from "@/components/today/VoteCard";
 import DutyPickerCard from "@/components/today/DutyPickerCard";
 import PraiseCard from "@/components/today/PraiseCard";
+
+function renderMentionText(text: string, knownUsers: string[]) {
+  const parts = text.split(/(@\S+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("@") && knownUsers.includes(part.slice(1))) {
+      return <span key={i} className="font-bold text-indigo-400">{part}</span>;
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
 
 type Location = "3층" | "옥상" | "편의점";
 type Status = "going" | "waiting" | "cant";
@@ -79,6 +89,7 @@ export default function GatheringPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatText, setChatText] = useState("");
   const [chatSending, setChatSending] = useState(false);
+  const [mentionSuggestions, setMentionSuggestions] = useState<string[]>([]);
   const [gatherLogs, setGatherLogs] = useState<GatherLog[]>([]);
   const [gatherStats, setGatherStats] = useState({ day: 0, week: 0, month: 0 });
   const [callerStats, setCallerStats] = useState<{ name: string; count: number }[]>([]);
@@ -90,6 +101,48 @@ export default function GatheringPage() {
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const myName = user?.firstName ?? user?.username ?? email.split("@")[0];
   const myImage = user?.imageUrl ?? null;
+
+  const [allUsers, setAllUsers] = useState<{ name: string; imageUrl: string | null }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/users")
+      .then(r => r.json())
+      .then(d => setAllUsers(d.users ?? []))
+      .catch(() => {});
+  }, []);
+
+  // 멘션 후보: Clerk에 등록된 전체 유저 (사진 유무 무관)
+  const mentionCandidates = React.useMemo(() => {
+    const nameMap = new Map<string, string | null>();
+    allUsers.forEach(u => nameMap.set(u.name, u.imageUrl));
+    nameMap.delete(myName);
+    return nameMap;
+  }, [allUsers, myName]);
+
+  const allProfileNames = [myName, ...Array.from(mentionCandidates.keys())];
+
+  function handleChatInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setChatText(val);
+    const atIdx = val.lastIndexOf("@");
+    if (atIdx >= 0) {
+      const after = val.slice(atIdx + 1);
+      if (!after.includes(" ")) {
+        const partial = after.toLowerCase();
+        const all = Array.from(mentionCandidates.keys());
+        setMentionSuggestions(partial === "" ? all : all.filter(n => n.toLowerCase().startsWith(partial)));
+        return;
+      }
+    }
+    setMentionSuggestions([]);
+  }
+
+  function selectChatMention(name: string) {
+    const atIdx = chatText.lastIndexOf("@");
+    const before = atIdx >= 0 ? chatText.slice(0, atIdx) : chatText;
+    setChatText(`${before}@${name} `);
+    setMentionSuggestions([]);
+  }
 
   const loadChat = async (callId: string) => {
     try {
@@ -538,7 +591,7 @@ export default function GatheringPage() {
                             <div className={`px-3 py-2 rounded-2xl text-[14px] leading-relaxed ${
                               isMine ? "bg-blue-500 text-white rounded-br-sm" : "bg-gray-100 text-gray-800 rounded-bl-sm"
                             }`}>
-                              {msg.text}
+                              {renderMentionText(msg.text, allProfileNames)}
                             </div>
                             <p className="text-[10px] text-gray-300 px-1">{format(new Date(msg.createdAt), "HH:mm")}</p>
                           </div>
@@ -546,11 +599,23 @@ export default function GatheringPage() {
                       );
                     })}
                   </div>
+                  {mentionSuggestions.length > 0 && (
+                    <div className="border-t border-gray-100 max-h-[150px] overflow-y-auto">
+                      {mentionSuggestions.slice(0, 5).map(name => (
+                        <button key={name} type="button"
+                          onMouseDown={(e) => { e.preventDefault(); selectChatMention(name); }}
+                          className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50 active:bg-gray-100 border-b border-gray-50 last:border-0">
+                          <Avatar imageUrl={mentionCandidates.get(name) ?? null} name={name} size={24} />
+                          <span className="text-[13px] font-semibold text-indigo-500">@{name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="border-t border-gray-100 flex items-center gap-2 px-3 py-2.5">
                     <Avatar imageUrl={myImage} name={myName} size={28} />
                     <input
                       value={chatText}
-                      onChange={(e) => setChatText(e.target.value)}
+                      onChange={handleChatInputChange}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
                       placeholder="메시지 입력..."
                       className="flex-1 bg-gray-100 rounded-2xl px-3.5 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400"

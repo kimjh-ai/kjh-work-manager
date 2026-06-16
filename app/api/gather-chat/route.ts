@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import redis from "@/lib/redis";
-import { sendPush } from "@/lib/sendPush";
+import { sendPush, sendDmPush } from "@/lib/sendPush";
 
 export const runtime = "nodejs";
 
@@ -46,6 +46,20 @@ export async function POST(req: NextRequest) {
 
   try {
     await sendPush(`💬 ${name}`, text.trim().slice(0, 40), "chat", imageUrl ?? undefined);
+  } catch { /* no-op */ }
+
+  // @멘션 타겟 푸시
+  try {
+    const rawMatches = (text.trim().match(/@(\S+)/g) ?? []) as string[];
+    const mentions = [...new Set(rawMatches.map(m => m.slice(1)))];
+    if (mentions.length > 0) {
+      const pRaw = await redis.get("user:profiles");
+      const pMap: Record<string, string> = pRaw ? JSON.parse(pRaw) : {};
+      const valid = mentions.filter(m => m !== name && m in pMap);
+      await Promise.all(valid.map(m =>
+        sendDmPush(`🔔 ${name}이(가) 멘션했어요`, `집합채팅: ${text.trim().slice(0, 40)}`, m).catch(() => {})
+      ));
+    }
   } catch { /* no-op */ }
 
   return NextResponse.json({ ok: true });

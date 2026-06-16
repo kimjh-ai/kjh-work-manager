@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -43,6 +43,20 @@ function msgTime(iso: string) {
   return format(new Date(iso), "a h:mm", { locale: ko });
 }
 
+function renderMentionText(text: string, knownUsers: string[]): React.ReactNode {
+  const parts = text.split(/(@\S+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("@") && knownUsers.includes(part.slice(1))) {
+      return (
+        <span key={i} className="font-bold" style={{ color: "#7c8cf8" }}>
+          {part}
+        </span>
+      );
+    }
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
+}
+
 function getUnread(
   msg: ChatMsg,
   reads: Record<string, string>,
@@ -75,6 +89,7 @@ export default function DmPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [imageModal, setImageModal] = useState<string | null>(null);
+  const [mentionSuggestions, setMentionSuggestions] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastMsgIdRef = useRef<string>("");
@@ -84,7 +99,16 @@ export default function DmPage() {
   }, [isLoaded, user, router]);
 
   useEffect(() => {
-    fetch("/api/profiles").then(r => r.json()).then(d => setProfiles(d.profiles ?? {})).catch(() => {});
+    fetch("/api/users")
+      .then(r => r.json())
+      .then(d => {
+        const map: Record<string, string> = {};
+        (d.users ?? []).forEach((u: { name: string; imageUrl: string | null }) => {
+          if (u.name) map[u.name] = u.imageUrl ?? "";
+        });
+        setProfiles(map);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -210,6 +234,30 @@ export default function DmPage() {
     setTimeout(() => inputRef.current?.focus(), 100);
   }
 
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setInput(val);
+    const atIdx = val.lastIndexOf("@");
+    if (atIdx >= 0) {
+      const after = val.slice(atIdx + 1);
+      if (!after.includes(" ")) {
+        const partial = after.toLowerCase();
+        const all = Object.keys(profiles).filter(n => n !== myName);
+        setMentionSuggestions(partial === "" ? all : all.filter(n => n.toLowerCase().startsWith(partial)));
+        return;
+      }
+    }
+    setMentionSuggestions([]);
+  }
+
+  function selectMention(name: string) {
+    const atIdx = input.lastIndexOf("@");
+    const before = atIdx >= 0 ? input.slice(0, atIdx) : input;
+    setInput(`${before}@${name} `);
+    setMentionSuggestions([]);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
   async function sendMessage() {
     if (!input.trim() || !target || !myName || sending) return;
     const text = input.trim();
@@ -238,6 +286,8 @@ export default function DmPage() {
   const userList = Object.entries(profiles)
     .filter(([name]) => name !== myName)
     .map(([name, imageUrl]) => ({ name, imageUrl }));
+
+  const allUserNames = [myName, ...userList.map(u => u.name)];
 
   const totalUnread = inbox.reduce((sum, e) => sum + (e.unread ?? 0), 0);
 
@@ -388,8 +438,22 @@ export default function DmPage() {
             const showName = !isMe && target?.type === "topic" && prevMsg?.from !== msg.from;
             const unread = isMe && target ? getUnread(msg, reads, target, profiles) : -1;
 
+            const msgDateStr = format(new Date(msg.createdAt), "yyyy-MM-dd");
+            const prevDateStr = prevMsg ? format(new Date(prevMsg.createdAt), "yyyy-MM-dd") : null;
+            const showDateDivider = msgDateStr !== prevDateStr;
+
             return (
-              <div key={msg.id} className={`flex items-end gap-2 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
+              <React.Fragment key={msg.id}>
+                {showDateDivider && (
+                  <div className="flex items-center gap-3 my-3">
+                    <div className="flex-1 h-px bg-gray-200" />
+                    <span className="text-[11px] text-gray-400 font-medium flex-shrink-0 px-2">
+                      {format(new Date(msg.createdAt), "yyyy년 M월 d일 EEEE", { locale: ko })}
+                    </span>
+                    <div className="flex-1 h-px bg-gray-200" />
+                  </div>
+                )}
+              <div className={`flex items-end gap-2 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
                 {/* 상대방 아바타 - 탭하면 사진 보기 */}
                 {!isMe && (
                   <button type="button" aria-label={`${msg.from} 프로필 사진`} onClick={() => msg.fromImage && setImageModal(msg.fromImage)} className="flex-shrink-0 self-end">
@@ -403,7 +467,7 @@ export default function DmPage() {
                   <div className={`rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed break-words ${
                     isMe ? "text-white rounded-br-sm" : "bg-white text-gray-900 shadow-sm rounded-bl-sm"
                   }`} style={isMe ? { background: "#1a1d2e" } : {}}>
-                    {msg.text}
+                    {renderMentionText(msg.text, allUserNames)}
                   </div>
                   <div className={`flex items-center gap-1.5 px-1 ${isMe ? "flex-row-reverse" : ""}`}>
                     <p className="text-[10px] text-gray-400">{msgTime(msg.createdAt)}</p>
@@ -417,10 +481,28 @@ export default function DmPage() {
                   </div>
                 </div>
               </div>
+              </React.Fragment>
             );
           })}
           <div ref={messagesEndRef} />
         </div>
+
+        {/* 멘션 자동완성 드롭다운 */}
+        {mentionSuggestions.length > 0 && (
+          <div className="bg-white border-t border-gray-100 flex-shrink-0 max-h-[180px] overflow-y-auto">
+            {mentionSuggestions.slice(0, 6).map(name => (
+              <button
+                key={name}
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); selectMention(name); }}
+                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 active:bg-gray-100 border-b border-gray-50 last:border-0"
+              >
+                <Avatar imageUrl={profiles[name] ?? null} name={name} size={28} />
+                <span className="text-[14px] font-semibold text-indigo-500">@{name}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* 입력창 */}
         <div className="bg-white border-t border-gray-100 px-4 py-3 pb-safe flex items-center gap-2 flex-shrink-0">
@@ -428,7 +510,7 @@ export default function DmPage() {
             ref={inputRef}
             type="text"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
             placeholder={target?.type === "topic" ? `# ${target.name}에 메시지 보내기` : `${chatLabel}에게 메시지 보내기`}
             className="flex-1 bg-gray-100 rounded-2xl px-4 py-2.5 text-[14px] outline-none placeholder:text-gray-400"
