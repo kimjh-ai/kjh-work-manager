@@ -15,23 +15,21 @@ import PraiseCard from "@/components/today/PraiseCard";
 
 function renderHighlightedInput(text: string) {
   const parts = text.split(/(@\S+)/g);
-  return parts.map((part, i) =>
-    part.startsWith("@")
-      ? <span key={i} className="text-blue-600 font-medium">{part}</span>
-      : <span key={i} className="text-gray-900">{part}</span>
-  );
+  return parts.map((part, i) => {
+    if (part === "@ALL") return <span key={i} className="text-orange-500 font-bold">{part}</span>;
+    if (part.startsWith("@")) return <span key={i} className="text-blue-600 font-medium">{part}</span>;
+    return <span key={i} className="text-gray-900">{part}</span>;
+  });
 }
 
 function renderMentionText(text: string, knownUsers: string[], isMine: boolean) {
   const parts = text.split(/(@\S+)/g);
   return parts.map((part, i) => {
+    if (part === "@ALL") {
+      return <span key={i} className={isMine ? "font-bold bg-white/30 rounded px-0.5" : "font-bold text-orange-500"}>{part}</span>;
+    }
     if (part.startsWith("@") && knownUsers.includes(part.slice(1))) {
-      return (
-        <span key={i} className={isMine
-          ? "font-bold bg-white/30 rounded px-0.5"
-          : "font-bold text-blue-600"
-        }>{part}</span>
-      );
+      return <span key={i} className={isMine ? "font-bold bg-white/30 rounded px-0.5" : "font-bold text-blue-600"}>{part}</span>;
     }
     return <span key={i}>{part}</span>;
   });
@@ -114,6 +112,7 @@ export default function GatheringPage() {
   const [statsTab, setStatsTab] = useState<"count" | "caller" | "loc">("count");
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const myName = user?.firstName ?? user?.username ?? email.split("@")[0];
@@ -147,7 +146,7 @@ export default function GatheringPage() {
       const after = val.slice(atIdx + 1);
       if (!after.includes(" ")) {
         const partial = after.toLowerCase();
-        const all = Array.from(mentionCandidates.keys());
+        const all = ["ALL", ...Array.from(mentionCandidates.keys())];
         setMentionSuggestions(partial === "" ? all : all.filter(n => n.toLowerCase().startsWith(partial)));
         return;
       }
@@ -242,10 +241,7 @@ export default function GatheringPage() {
   }, [isLoaded]);
 
   useEffect(() => {
-    const el = chatContainerRef.current;
-    if (!el) return;
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (isNearBottom) el.scrollTop = el.scrollHeight;
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "instant" }), 0);
   }, [chatMessages]);
 
   useEffect(() => {
@@ -648,15 +644,20 @@ export default function GatheringPage() {
                         </div>
                       );
                     })}
+                    <div ref={chatEndRef} />
                   </div>
                   {mentionSuggestions.length > 0 && (
                     <div className="border-t border-gray-100 max-h-[150px] overflow-y-auto">
-                      {mentionSuggestions.slice(0, 5).map((name, idx) => (
+                      {mentionSuggestions.slice(0, 6).map((name, idx) => (
                         <button key={name} type="button"
                           onMouseDown={(e) => { e.preventDefault(); selectChatMention(name); }}
                           className={`w-full flex items-center gap-3 px-4 py-2 border-b border-gray-50 last:border-0 transition-colors ${idx === mentionIdx ? "bg-blue-50" : "hover:bg-gray-50 active:bg-gray-100"}`}>
-                          <Avatar imageUrl={mentionCandidates.get(name) ?? null} name={name} size={24} />
-                          <span className="text-[13px] font-semibold text-blue-600">@{name}</span>
+                          {name === "ALL"
+                            ? <span className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center text-[12px]">🔔</span>
+                            : <Avatar imageUrl={mentionCandidates.get(name) ?? null} name={name} size={24} />
+                          }
+                          <span className={`text-[13px] font-semibold ${name === "ALL" ? "text-orange-500" : "text-blue-600"}`}>@{name}</span>
+                          {name === "ALL" && <span className="text-[11px] text-gray-400 ml-auto">전체 알림</span>}
                         </button>
                       ))}
                     </div>

@@ -1,5 +1,5 @@
 // 관리자 이메일 목록
-const ADMIN_EMAILS = ["kimjh@rototobebe.co.kr"];
+const ADMIN_EMAILS = ["kimjh@rototobebe.co.kr", "omai@rototobebe.co.kr"];
 
 export function isAdmin(email: string | null | undefined): boolean {
   if (!email) return false;

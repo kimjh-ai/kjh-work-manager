@@ -299,6 +299,26 @@ export default function MorePage() {
           </div>
         </section>
 
+        {/* ── 관리자 ── */}
+        {admin && (
+          <section>
+            <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase px-1 mb-2">관리자</p>
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <Link href="/admin"
+                className="flex items-center gap-4 px-4 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                <div className="w-10 h-10 rounded-xl bg-yellow-50 flex items-center justify-center flex-shrink-0">
+                  <span className="text-[18px]">👑</span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-[15px] font-semibold text-gray-900">멤버 관리</p>
+                  <p className="text-[12px] text-gray-400 mt-0.5">가입 멤버 확인 · 퇴장 처리</p>
+                </div>
+                <ChevronRight size={16} className="text-gray-300" />
+              </Link>
+            </div>
+          </section>
+        )}
+
         {/* ── 앱 설치 ── */}
         <section>
           <p className="text-[11px] font-bold text-gray-400 tracking-widest uppercase px-1 mb-2">앱으로 설치</p>

@@ -45,25 +45,21 @@ function msgTime(iso: string) {
 
 function renderHighlightedInput(text: string) {
   const parts = text.split(/(@\S+)/g);
-  return parts.map((part, i) =>
-    part.startsWith("@")
-      ? <span key={i} className="text-blue-600 font-medium">{part}</span>
-      : <span key={i} className="text-gray-900">{part}</span>
-  );
+  return parts.map((part, i) => {
+    if (part === "@ALL") return <span key={i} className="text-orange-500 font-bold">{part}</span>;
+    if (part.startsWith("@")) return <span key={i} className="text-blue-600 font-medium">{part}</span>;
+    return <span key={i} className="text-gray-900">{part}</span>;
+  });
 }
 
 function renderMentionText(text: string, knownUsers: string[], isMe: boolean): React.ReactNode {
   const parts = text.split(/(@\S+)/g);
   return parts.map((part, i) => {
+    if (part === "@ALL") {
+      return <span key={i} className={isMe ? "font-bold bg-white/25 rounded px-0.5" : "font-bold text-orange-500"}>{part}</span>;
+    }
     if (part.startsWith("@") && knownUsers.includes(part.slice(1))) {
-      return (
-        <span key={i} className={isMe
-          ? "font-bold bg-white/25 rounded px-0.5"
-          : "font-bold text-indigo-600"
-        }>
-          {part}
-        </span>
-      );
+      return <span key={i} className={isMe ? "font-bold bg-white/25 rounded px-0.5" : "font-bold text-indigo-600"}>{part}</span>;
     }
     return <React.Fragment key={i}>{part}</React.Fragment>;
   });
@@ -221,7 +217,7 @@ export default function DmPage() {
   }, [view, target, loadMessages, markRead]);
 
   useEffect(() => {
-    if (view === "chat") messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+    if (view === "chat") setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "instant" }), 0);
   }, [messages, view]);
 
   useEffect(() => {
@@ -257,7 +253,7 @@ export default function DmPage() {
       const after = val.slice(atIdx + 1);
       if (!after.includes(" ")) {
         const partial = after.toLowerCase();
-        const all = Object.keys(profiles).filter(n => n !== myName);
+        const all = ["ALL", ...Object.keys(profiles).filter(n => n !== myName)];
         setMentionSuggestions(partial === "" ? all : all.filter(n => n.toLowerCase().startsWith(partial)));
         return;
       }
@@ -536,15 +532,19 @@ export default function DmPage() {
         {/* 멘션 자동완성 드롭다운 */}
         {mentionSuggestions.length > 0 && (
           <div className="bg-white border-t border-gray-100 flex-shrink-0 max-h-[180px] overflow-y-auto">
-            {mentionSuggestions.slice(0, 6).map((name, idx) => (
+            {mentionSuggestions.slice(0, 7).map((name, idx) => (
               <button
                 key={name}
                 type="button"
                 onMouseDown={(e) => { e.preventDefault(); selectMention(name); }}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0 transition-colors ${idx === mentionIdx ? "bg-blue-50" : "hover:bg-gray-50 active:bg-gray-100"}`}
               >
-                <Avatar imageUrl={profiles[name] ?? null} name={name} size={28} />
-                <span className="text-[14px] font-semibold text-blue-600">@{name}</span>
+                {name === "ALL"
+                  ? <span className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center text-[13px]">🔔</span>
+                  : <Avatar imageUrl={profiles[name] ?? null} name={name} size={28} />
+                }
+                <span className={`text-[14px] font-semibold ${name === "ALL" ? "text-orange-500" : "text-blue-600"}`}>@{name}</span>
+                {name === "ALL" && <span className="text-[12px] text-gray-400 ml-auto">전체 알림</span>}
               </button>
             ))}
           </div>

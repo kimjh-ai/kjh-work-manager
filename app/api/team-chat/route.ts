@@ -87,10 +87,17 @@ export async function POST(req: NextRequest) {
     if (mentions.length > 0) {
       const pRaw = await redis.get("user:profiles");
       const pMap: Record<string, string> = pRaw ? JSON.parse(pRaw) : {};
-      const valid = mentions.filter(m => m !== name && m in pMap);
-      await Promise.all(valid.map(m =>
-        sendDmPush(`🔔 ${name}이(가) 멘션했어요`, `팀채팅: ${text.trim().slice(0, 40)}`, m).catch(() => {})
-      ));
+      if (mentions.includes("ALL")) {
+        const targets = Object.keys(pMap).filter(m => m !== name);
+        await Promise.all(targets.map(m =>
+          sendDmPush(`🔔 ${name}이(가) 전체 멘션했어요`, `팀채팅: ${text.trim().slice(0, 40)}`, m).catch(() => {})
+        ));
+      } else {
+        const valid = mentions.filter(m => m !== name && m in pMap);
+        await Promise.all(valid.map(m =>
+          sendDmPush(`🔔 ${name}이(가) 멘션했어요`, `팀채팅: ${text.trim().slice(0, 40)}`, m).catch(() => {})
+        ));
+      }
     }
   } catch { /* no-op */ }
 
