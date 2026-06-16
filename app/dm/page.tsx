@@ -43,12 +43,15 @@ function msgTime(iso: string) {
   return format(new Date(iso), "a h:mm", { locale: ko });
 }
 
-function renderMentionText(text: string, knownUsers: string[]): React.ReactNode {
+function renderMentionText(text: string, knownUsers: string[], isMe: boolean): React.ReactNode {
   const parts = text.split(/(@\S+)/g);
   return parts.map((part, i) => {
     if (part.startsWith("@") && knownUsers.includes(part.slice(1))) {
       return (
-        <span key={i} className="font-bold" style={{ color: "#7c8cf8" }}>
+        <span key={i} className={isMe
+          ? "font-bold bg-white/25 rounded px-0.5"
+          : "font-bold text-indigo-600"
+        }>
           {part}
         </span>
       );
@@ -467,7 +470,7 @@ export default function DmPage() {
                   <div className={`rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed break-words ${
                     isMe ? "text-white rounded-br-sm" : "bg-white text-gray-900 shadow-sm rounded-bl-sm"
                   }`} style={isMe ? { background: "#1a1d2e" } : {}}>
-                    {renderMentionText(msg.text, allUserNames)}
+                    {renderMentionText(msg.text, allUserNames, isMe)}
                   </div>
                   <div className={`flex items-center gap-1.5 px-1 ${isMe ? "flex-row-reverse" : ""}`}>
                     <p className="text-[10px] text-gray-400">{msgTime(msg.createdAt)}</p>

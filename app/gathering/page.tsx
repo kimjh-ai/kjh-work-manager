@@ -13,11 +13,16 @@ import VoteCard from "@/components/today/VoteCard";
 import DutyPickerCard from "@/components/today/DutyPickerCard";
 import PraiseCard from "@/components/today/PraiseCard";
 
-function renderMentionText(text: string, knownUsers: string[]) {
+function renderMentionText(text: string, knownUsers: string[], isMine: boolean) {
   const parts = text.split(/(@\S+)/g);
   return parts.map((part, i) => {
     if (part.startsWith("@") && knownUsers.includes(part.slice(1))) {
-      return <span key={i} className="font-bold text-indigo-400">{part}</span>;
+      return (
+        <span key={i} className={isMine
+          ? "font-bold bg-white/30 rounded px-0.5"
+          : "font-bold text-blue-600"
+        }>{part}</span>
+      );
     }
     return <span key={i}>{part}</span>;
   });
@@ -591,7 +596,7 @@ export default function GatheringPage() {
                             <div className={`px-3 py-2 rounded-2xl text-[14px] leading-relaxed ${
                               isMine ? "bg-blue-500 text-white rounded-br-sm" : "bg-gray-100 text-gray-800 rounded-bl-sm"
                             }`}>
-                              {renderMentionText(msg.text, allProfileNames)}
+                              {renderMentionText(msg.text, allProfileNames, isMine)}
                             </div>
                             <p className="text-[10px] text-gray-300 px-1">{format(new Date(msg.createdAt), "HH:mm")}</p>
                           </div>
