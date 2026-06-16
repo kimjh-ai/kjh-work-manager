@@ -43,6 +43,15 @@ function msgTime(iso: string) {
   return format(new Date(iso), "a h:mm", { locale: ko });
 }
 
+function renderHighlightedInput(text: string) {
+  const parts = text.split(/(@\S+)/g);
+  return parts.map((part, i) =>
+    part.startsWith("@")
+      ? <span key={i} className="text-blue-600 font-medium">{part}</span>
+      : <span key={i} className="text-gray-900">{part}</span>
+  );
+}
+
 function renderMentionText(text: string, knownUsers: string[], isMe: boolean): React.ReactNode {
   const parts = text.split(/(@\S+)/g);
   return parts.map((part, i) => {
@@ -93,6 +102,8 @@ export default function DmPage() {
   const [sending, setSending] = useState(false);
   const [imageModal, setImageModal] = useState<string | null>(null);
   const [mentionSuggestions, setMentionSuggestions] = useState<string[]>([]);
+  const [mentionIdx, setMentionIdx] = useState(0);
+  const [isComposing, setIsComposing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastMsgIdRef = useRef<string>("");
@@ -240,6 +251,7 @@ export default function DmPage() {
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     setInput(val);
+    setMentionIdx(0);
     const atIdx = val.lastIndexOf("@");
     if (atIdx >= 0) {
       const after = val.slice(atIdx + 1);
@@ -258,7 +270,38 @@ export default function DmPage() {
     const before = atIdx >= 0 ? input.slice(0, atIdx) : input;
     setInput(`${before}@${name} `);
     setMentionSuggestions([]);
+    setMentionIdx(0);
     setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    const suggestions = mentionSuggestions.slice(0, 6);
+    if (suggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIdx(i => Math.min(i + 1, suggestions.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIdx(i => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Tab" || e.key === "Enter") {
+        e.preventDefault();
+        if (suggestions[mentionIdx]) selectMention(suggestions[mentionIdx]);
+        return;
+      }
+      if (e.key === "Escape") {
+        setMentionSuggestions([]);
+        setMentionIdx(0);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   }
 
   async function sendMessage() {
@@ -493,15 +536,15 @@ export default function DmPage() {
         {/* 멘션 자동완성 드롭다운 */}
         {mentionSuggestions.length > 0 && (
           <div className="bg-white border-t border-gray-100 flex-shrink-0 max-h-[180px] overflow-y-auto">
-            {mentionSuggestions.slice(0, 6).map(name => (
+            {mentionSuggestions.slice(0, 6).map((name, idx) => (
               <button
                 key={name}
                 type="button"
                 onMouseDown={(e) => { e.preventDefault(); selectMention(name); }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 active:bg-gray-100 border-b border-gray-50 last:border-0"
+                className={`w-full flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0 transition-colors ${idx === mentionIdx ? "bg-blue-50" : "hover:bg-gray-50 active:bg-gray-100"}`}
               >
                 <Avatar imageUrl={profiles[name] ?? null} name={name} size={28} />
-                <span className="text-[14px] font-semibold text-indigo-500">@{name}</span>
+                <span className="text-[14px] font-semibold text-blue-600">@{name}</span>
               </button>
             ))}
           </div>
@@ -509,15 +552,29 @@ export default function DmPage() {
 
         {/* 입력창 */}
         <div className="bg-white border-t border-gray-100 px-4 py-3 pb-safe flex items-center gap-2 flex-shrink-0">
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={handleInputChange}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-            placeholder={target?.type === "topic" ? `# ${target.name}에 메시지 보내기` : `${chatLabel}에게 메시지 보내기`}
-            className="flex-1 bg-gray-100 rounded-2xl px-4 py-2.5 text-[14px] outline-none placeholder:text-gray-400"
-          />
+          <div className="relative flex-1">
+            <div className="absolute inset-0 bg-gray-100 rounded-2xl pointer-events-none" />
+            {!isComposing && (
+              <div className="absolute inset-0 flex items-center px-4 text-[14px] pointer-events-none overflow-hidden">
+                {input
+                  ? renderHighlightedInput(input)
+                  : <span className="text-gray-400">{target?.type === "topic" ? `# ${target.name}에 메시지 보내기` : `${chatLabel}에게 메시지 보내기`}</span>
+                }
+              </div>
+            )}
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={() => setIsComposing(false)}
+              aria-label="메시지 입력"
+              className="relative w-full bg-transparent rounded-2xl px-4 py-2.5 text-[14px] outline-none"
+              style={{ color: isComposing ? "#111827" : "transparent", caretColor: "#374151" }}
+            />
+          </div>
           <button type="button" aria-label="전송" onClick={sendMessage} disabled={!input.trim() || sending}
             className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-opacity disabled:opacity-30 active:scale-95"
             style={{ background: "#1a1d2e" }}>

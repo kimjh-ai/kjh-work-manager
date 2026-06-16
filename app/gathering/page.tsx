@@ -13,6 +13,15 @@ import VoteCard from "@/components/today/VoteCard";
 import DutyPickerCard from "@/components/today/DutyPickerCard";
 import PraiseCard from "@/components/today/PraiseCard";
 
+function renderHighlightedInput(text: string) {
+  const parts = text.split(/(@\S+)/g);
+  return parts.map((part, i) =>
+    part.startsWith("@")
+      ? <span key={i} className="text-blue-600 font-medium">{part}</span>
+      : <span key={i} className="text-gray-900">{part}</span>
+  );
+}
+
 function renderMentionText(text: string, knownUsers: string[], isMine: boolean) {
   const parts = text.split(/(@\S+)/g);
   return parts.map((part, i) => {
@@ -95,6 +104,8 @@ export default function GatheringPage() {
   const [chatText, setChatText] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [mentionSuggestions, setMentionSuggestions] = useState<string[]>([]);
+  const [mentionIdx, setMentionIdx] = useState(0);
+  const [isComposing, setIsComposing] = useState(false);
   const [gatherLogs, setGatherLogs] = useState<GatherLog[]>([]);
   const [gatherStats, setGatherStats] = useState({ day: 0, week: 0, month: 0 });
   const [callerStats, setCallerStats] = useState<{ name: string; count: number }[]>([]);
@@ -102,6 +113,7 @@ export default function GatheringPage() {
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [statsTab, setStatsTab] = useState<"count" | "caller" | "loc">("count");
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
 
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const myName = user?.firstName ?? user?.username ?? email.split("@")[0];
@@ -129,6 +141,7 @@ export default function GatheringPage() {
   function handleChatInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value;
     setChatText(val);
+    setMentionIdx(0);
     const atIdx = val.lastIndexOf("@");
     if (atIdx >= 0) {
       const after = val.slice(atIdx + 1);
@@ -147,6 +160,38 @@ export default function GatheringPage() {
     const before = atIdx >= 0 ? chatText.slice(0, atIdx) : chatText;
     setChatText(`${before}@${name} `);
     setMentionSuggestions([]);
+    setMentionIdx(0);
+    setTimeout(() => chatInputRef.current?.focus(), 0);
+  }
+
+  function handleChatKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    const suggestions = mentionSuggestions.slice(0, 5);
+    if (suggestions.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIdx(i => Math.min(i + 1, suggestions.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIdx(i => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Tab" || e.key === "Enter") {
+        e.preventDefault();
+        if (suggestions[mentionIdx]) selectChatMention(suggestions[mentionIdx]);
+        return;
+      }
+      if (e.key === "Escape") {
+        setMentionSuggestions([]);
+        setMentionIdx(0);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendChat();
+    }
   }
 
   const loadChat = async (callId: string) => {
@@ -606,25 +651,40 @@ export default function GatheringPage() {
                   </div>
                   {mentionSuggestions.length > 0 && (
                     <div className="border-t border-gray-100 max-h-[150px] overflow-y-auto">
-                      {mentionSuggestions.slice(0, 5).map(name => (
+                      {mentionSuggestions.slice(0, 5).map((name, idx) => (
                         <button key={name} type="button"
                           onMouseDown={(e) => { e.preventDefault(); selectChatMention(name); }}
-                          className="w-full flex items-center gap-3 px-4 py-2 hover:bg-gray-50 active:bg-gray-100 border-b border-gray-50 last:border-0">
+                          className={`w-full flex items-center gap-3 px-4 py-2 border-b border-gray-50 last:border-0 transition-colors ${idx === mentionIdx ? "bg-blue-50" : "hover:bg-gray-50 active:bg-gray-100"}`}>
                           <Avatar imageUrl={mentionCandidates.get(name) ?? null} name={name} size={24} />
-                          <span className="text-[13px] font-semibold text-indigo-500">@{name}</span>
+                          <span className="text-[13px] font-semibold text-blue-600">@{name}</span>
                         </button>
                       ))}
                     </div>
                   )}
                   <div className="border-t border-gray-100 flex items-center gap-2 px-3 py-2.5">
                     <Avatar imageUrl={myImage} name={myName} size={28} />
-                    <input
-                      value={chatText}
-                      onChange={handleChatInputChange}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
-                      placeholder="메시지 입력..."
-                      className="flex-1 bg-gray-100 rounded-2xl px-3.5 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400"
-                    />
+                    <div className="relative flex-1">
+                      <div className="absolute inset-0 bg-gray-100 rounded-2xl pointer-events-none" />
+                      {!isComposing && (
+                        <div className="absolute inset-0 flex items-center px-3.5 text-[14px] pointer-events-none overflow-hidden">
+                          {chatText
+                            ? renderHighlightedInput(chatText)
+                            : <span className="text-gray-400">메시지 입력...</span>
+                          }
+                        </div>
+                      )}
+                      <input
+                        ref={chatInputRef}
+                        value={chatText}
+                        onChange={handleChatInputChange}
+                        onKeyDown={handleChatKeyDown}
+                        onCompositionStart={() => setIsComposing(true)}
+                        onCompositionEnd={() => setIsComposing(false)}
+                        aria-label="메시지 입력"
+                        className="relative w-full bg-transparent rounded-2xl px-3.5 py-2 text-[14px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+                        style={{ color: isComposing ? "#111827" : "transparent", caretColor: "#374151" }}
+                      />
+                    </div>
                     <button type="button" onClick={sendChat} disabled={chatSending || !chatText.trim()}
                       aria-label="전송" title="전송"
                       className="w-9 h-9 bg-blue-500 text-white rounded-2xl flex items-center justify-center flex-shrink-0 disabled:opacity-40">
