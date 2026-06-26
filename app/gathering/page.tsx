@@ -35,7 +35,7 @@ function renderMentionText(text: string, knownUsers: string[], isMine: boolean) 
   });
 }
 
-type Location = "3층" | "옥상" | "편의점";
+type Location = "3층" | "3층 좌" | "3층 우" | "옥상" | "편의점";
 type Status = "going" | "waiting" | "cant";
 type PageTab = "gather" | "today";
 
@@ -70,7 +70,8 @@ interface GatherCall {
 }
 
 const LOCATIONS: { value: Location; emoji: string }[] = [
-  { value: "3층", emoji: "🏢" },
+  { value: "3층 좌", emoji: "⬅️" },
+  { value: "3층 우", emoji: "➡️" },
   { value: "옥상", emoji: "🌤️" },
   { value: "편의점", emoji: "🏪" },
 ];
@@ -89,7 +90,7 @@ export default function GatheringPage() {
   const [call, setCall] = useState<GatherCall | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [selectedLoc, setSelectedLoc] = useState<Location>("3층");
+  const [selectedLoc, setSelectedLoc] = useState<Location>("3층 좌");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [notifStatus, setNotifStatus] = useState<"unknown"|"granted"|"denied"|"unsupported">("unknown");
@@ -393,7 +394,7 @@ export default function GatheringPage() {
           {showForm && (
             <div className="card mb-4 space-y-3">
               <h2 className="text-sm font-semibold text-gray-700">📍 집합 장소 선택</h2>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {LOCATIONS.map(({value,emoji})=>(
                   <button key={value} type="button" onClick={()=>setSelectedLoc(value)}
                     className={`py-3 rounded-xl text-sm font-medium border-2 transition-all ${selectedLoc===value?"border-red-500 bg-red-50 text-red-700":"border-gray-200 text-gray-600"}`}>
@@ -469,7 +470,7 @@ export default function GatheringPage() {
                   {locStats.length === 0 ? (
                     <p className="text-[13px] text-gray-400 text-center py-3">이번달 기록 없음</p>
                   ) : (() => {
-                    const locEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
+                    const locEmoji: Record<string, string> = { "3층": "🏢", "3층 좌": "⬅️", "3층 우": "➡️", "옥상": "🌤️", "편의점": "🏪" };
                     const maxCount = locStats[0].count;
                     return locStats.map(({ location, count }) => (
                       <div key={location} className="flex items-center gap-3">
@@ -495,7 +496,7 @@ export default function GatheringPage() {
 
           {/* 최근 발령 기록 */}
           {gatherLogs.length > 0 && (() => {
-            const locEmoji: Record<string, string> = { "3층": "🏢", "옥상": "🌤️", "편의점": "🏪" };
+            const locEmoji: Record<string, string> = { "3층": "🏢", "3층 좌": "⬅️", "3층 우": "➡️", "옥상": "🌤️", "편의점": "🏪" };
             const visible = historyExpanded ? gatherLogs : gatherLogs.slice(0, 3);
             return (
               <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-4">
