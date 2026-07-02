@@ -15,6 +15,7 @@ interface AdminUser {
   email: string;
   imageUrl: string | null;
   createdAt: number;
+  lastSignInAt: number | null;
 }
 
 export default function AdminPage() {
@@ -100,6 +101,8 @@ export default function AdminPage() {
                 <p className="text-[12px] text-gray-400 truncate">{u.email}</p>
                 <p className="text-[11px] text-gray-300">
                   가입: {format(new Date(u.createdAt), "yyyy.MM.dd", { locale: ko })}
+                  {" · "}
+                  최근: {u.lastSignInAt ? format(new Date(u.lastSignInAt), "yyyy.MM.dd HH:mm", { locale: ko }) : "-"}
                 </p>
               </div>
               {u.id !== myClerkId && (

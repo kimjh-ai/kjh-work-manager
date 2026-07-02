@@ -25,6 +25,7 @@ export async function GET() {
     email: u.primaryEmailAddress?.emailAddress ?? "",
     imageUrl: u.imageUrl ?? null,
     createdAt: u.createdAt,
+    lastSignInAt: u.lastSignInAt ?? null,
   }));
 
   return NextResponse.json({ users });
