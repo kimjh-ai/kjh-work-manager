@@ -18,15 +18,24 @@ export async function GET() {
   const client = await getAdminClient();
   if (!client) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const result = await client.users.getUserList({ limit: 200 });
-  const users = (result.data ?? []).map((u) => ({
-    id: u.id,
-    name: u.firstName ?? u.username ?? u.primaryEmailAddress?.emailAddress?.split("@")[0] ?? "(이름없음)",
-    email: u.primaryEmailAddress?.emailAddress ?? "",
-    imageUrl: u.imageUrl ?? null,
-    createdAt: u.createdAt,
-    lastSignInAt: u.lastSignInAt ?? null,
-  }));
+  const [result, lsRaw] = await Promise.all([
+    client.users.getUserList({ limit: 200 }),
+    redis.get("user:last_seen"),
+  ]);
+  const lastSeenMap: Record<string, number> = lsRaw ? JSON.parse(lsRaw) : {};
+
+  const users = (result.data ?? []).map((u) => {
+    const name = u.firstName ?? u.username ?? u.primaryEmailAddress?.emailAddress?.split("@")[0] ?? "(이름없음)";
+    return {
+      id: u.id,
+      name,
+      email: u.primaryEmailAddress?.emailAddress ?? "",
+      imageUrl: u.imageUrl ?? null,
+      createdAt: u.createdAt,
+      lastSignInAt: u.lastSignInAt ?? null,
+      lastSeenAt: lastSeenMap[name] ?? null,
+    };
+  });
 
   return NextResponse.json({ users });
 }

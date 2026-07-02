@@ -16,6 +16,7 @@ interface AdminUser {
   imageUrl: string | null;
   createdAt: number;
   lastSignInAt: number | null;
+  lastSeenAt: number | null;
 }
 
 export default function AdminPage() {
@@ -72,14 +73,14 @@ export default function AdminPage() {
     <div className="min-h-screen bg-gray-50">
       {/* 헤더 */}
       <div className="bg-white border-b border-gray-100 px-4 pt-12 pb-3 flex items-center gap-3 sticky top-0 z-10">
-        <button type="button" onClick={() => router.back()} className="p-1.5 -ml-1.5 rounded-xl active:bg-gray-100">
+        <button type="button" aria-label="뒤로가기" onClick={() => router.back()} className="p-1.5 -ml-1.5 rounded-xl active:bg-gray-100">
           <ArrowLeft size={20} className="text-gray-700" />
         </button>
         <div className="flex-1">
           <p className="text-[17px] font-bold text-gray-900">👑 멤버 관리</p>
           <p className="text-[12px] text-gray-400">총 {users.length}명 가입</p>
         </div>
-        <button type="button" onClick={load} className="p-2 rounded-xl active:bg-gray-100">
+        <button type="button" aria-label="새로고침" onClick={load} className="p-2 rounded-xl active:bg-gray-100">
           <RefreshCw size={16} className="text-gray-500" />
         </button>
       </div>
@@ -101,8 +102,9 @@ export default function AdminPage() {
                 <p className="text-[12px] text-gray-400 truncate">{u.email}</p>
                 <p className="text-[11px] text-gray-300">
                   가입: {format(new Date(u.createdAt), "yyyy.MM.dd", { locale: ko })}
-                  {" · "}
-                  최근: {u.lastSignInAt ? format(new Date(u.lastSignInAt), "yyyy.MM.dd HH:mm", { locale: ko }) : "-"}
+                </p>
+                <p className="text-[11px] text-gray-300">
+                  마지막 접속: {u.lastSeenAt ? format(new Date(u.lastSeenAt), "MM.dd HH:mm", { locale: ko }) : "기록 없음"}
                 </p>
               </div>
               {u.id !== myClerkId && (
@@ -121,7 +123,7 @@ export default function AdminPage() {
                     </button>
                   </div>
                 ) : (
-                  <button type="button"
+                  <button type="button" aria-label="퇴장"
                     onClick={() => setConfirmId(u.id)}
                     className="flex-shrink-0 p-2 rounded-xl text-red-400 active:bg-red-50">
                     <Trash2 size={16} />
