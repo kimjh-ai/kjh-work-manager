@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { isAdmin } from "@/lib/auth";
+import redis from "@/lib/redis";
 
 export const runtime = "nodejs";
 
